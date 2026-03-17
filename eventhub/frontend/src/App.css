@@ -1,0 +1,1189 @@
+/* -----------------------------------------------------------
+   1. ОБНУЛЕНИЕ И БАЗОВЫЕ СТИЛИ (RESET & BASE)
+----------------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css?family=Open+Sans:400,600,700,800&display=swap');
+
+:root {
+    --primary: #007bff;
+    --primary-dark: #0056b3;
+    --gold: #ceae60;
+    --gold-hover: #b3954d;
+    --text-main: #333333;
+    --text-muted: #777777;
+    --bg-gray: #f4f7f6;
+    --white: #ffffff;
+    --transition: all 0.3s ease;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: 'Open Sans', sans-serif;
+    background-color: var(--bg-gray);
+    color: var(--text-main);
+    line-height: 1.6;
+    overflow-x: hidden;
+}
+
+a {
+    text-decoration: none;
+    transition: var(--transition);
+}
+
+/* -----------------------------------------------------------
+   2. ШАПКА (HEADER) - Клон itclastersib.ru
+----------------------------------------------------------- */
+.top-line {
+    height: 5px;
+    background: var(--primary);
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 2002;
+}
+
+.site-header {
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    position: fixed;
+    top: 5px;
+    width: 100%;
+    z-index: 2001;
+    padding: 12px 0;
+}
+
+.logo-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.logo-main {
+    font-weight: 800;
+    font-size: 24px;
+    color: #1a1a1a;
+    line-height: 0.9;
+    letter-spacing: -0.5px;
+}
+
+.logo-sub {
+    color: var(--primary);
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 3px;
+    margin-top: 2px;
+}
+
+.main-nav {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+}
+
+.main-nav a {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-main);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.main-nav a:hover {
+    color: var(--primary);
+}
+
+.nav-highlight {
+    color: var(--primary) !important;
+    position: relative;
+}
+
+.nav-highlight::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--primary);
+}
+
+.btn-lk-gold {
+    border: 2px solid var(--gold);
+    color: var(--gold) !important;
+    font-weight: 800;
+    padding: 8px 22px;
+    border-radius: 4px;
+    font-size: 12px;
+    background: transparent;
+    text-transform: uppercase;
+}
+
+.btn-lk-gold:hover {
+    background: var(--gold);
+    color: var(--white) !important;
+    box-shadow: 0 4px 12px rgba(206, 174, 96, 0.3);
+}
+
+/* -----------------------------------------------------------
+   3. ГЛАВНАЯ (HERO & CONTENT)
+----------------------------------------------------------- */
+.hero-section {
+    height: 80vh;
+    min-height: 500px;
+    background: url('https://itclastersib.ru/wp-content/themes/itclaster/images/top-bg.jpg') no-repeat center center;
+    background-size: cover;
+    display: flex;
+    align-items: center;
+    position: relative;
+    color: var(--white);
+}
+
+.hero-bg-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0, 41, 107, 0.9) 0%, rgba(0, 20, 50, 0.7) 100%);
+}
+
+.hero-title {
+    font-size: clamp(2.5rem, 6vw, 5rem);
+    font-weight: 800;
+    margin: 0;
+    text-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+}
+
+.hero-divider {
+    width: 80px;
+    height: 5px;
+    background: var(--gold);
+    margin: 30px 0;
+}
+
+.hero-description {
+    font-size: 1.25rem;
+    max-width: 600px;
+    opacity: 0.9;
+    margin-bottom: 40px;
+}
+
+.btn-main-action {
+    background: var(--gold);
+    color: var(--white);
+    padding: 20px 50px;
+    font-weight: 800;
+    font-size: 16px;
+    border-radius: 4px;
+    display: inline-block;
+    box-shadow: 0 15px 30px rgba(0,0,0,0.25);
+}
+
+.btn-main-action:hover {
+    background: var(--gold-hover);
+    transform: translateY(-2px);
+    color: var(--white);
+}
+
+.section-title {
+    font-weight: 800;
+    font-size: 32px;
+    margin-bottom: 40px;
+    position: relative;
+    padding-bottom: 15px;
+}
+
+.section-title::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 60px;
+    height: 4px;
+    background: var(--primary);
+}
+
+.event-card-simple {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    border-top: 5px solid var(--primary);
+    height: 100%;
+    transition: var(--transition);
+}
+
+.event-card-simple:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 15px 40px rgba(0,0,0,0.12);
+}
+
+.date-tag {
+    color: var(--primary);
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 13px;
+    margin-bottom: 15px;
+}
+
+/* -----------------------------------------------------------
+   4. ЛИЧНЫЙ КАБИНЕТ (DASHBOARD)
+----------------------------------------------------------- */
+.user-sidebar-card {
+    background: var(--white);
+    border-radius: 12px;
+    border: none;
+    overflow: hidden;
+}
+
+.user-avatar-big {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto;
+    background: var(--primary);
+    border: 4px solid #eef6ff;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--white);
+}
+
+.badge-primary {
+    background-color: rgba(0, 123, 255, 0.1) !important;
+    color: var(--primary) !important;
+    font-size: 11px;
+    padding: 6px 12px;
+    border: 1px solid var(--primary);
+}
+
+.nav-link {
+    color: #444;
+    font-weight: 600;
+    padding: 12px 15px !important;
+    border-radius: 6px;
+    margin-bottom: 5px;
+}
+
+.nav-link:hover {
+    background: #f0f7ff;
+    color: var(--primary);
+}
+
+/* -----------------------------------------------------------
+   5. КАЛЕНДАРЬ (CALENDAR VIEW)
+----------------------------------------------------------- */
+.calendar-wrapper {
+    background: var(--white);
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+.calendar-header h2 {
+    font-weight: 800;
+    color: #2c3e50;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: #e0e6ed;
+    gap: 1px;
+    border: 1px solid #e0e6ed;
+}
+
+.weekday-label {
+    background: #f8fafc;
+    padding: 15px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 12px;
+    color: #64748b;
+    text-transform: uppercase;
+}
+
+.cell {
+    background: var(--white);
+    min-height: 120px;
+    padding: 8px;
+    position: relative;
+    transition: background 0.2s;
+}
+
+.cell:hover {
+    background: #fcfdfe;
+}
+
+.empty { background: #f1f5f9; }
+
+.today-cell {
+    background: #fffdf2;
+}
+
+.today-cell .day-num {
+    background: var(--primary);
+    color: var(--white);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.day-num {
+    font-weight: 700;
+    font-size: 14px;
+    color: #1e293b;
+}
+
+.mini-badge {
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-weight: 700;
+    line-height: 1.2;
+    border-left: 4px solid transparent;
+}
+
+.mini-badge.event {
+    background: #eff6ff;
+    color: var(--primary);
+    border-left-color: var(--primary);
+}
+
+.mini-badge.task {
+    background: #f0fdf4;
+    color: #16a34a;
+    border-left-color: #16a34a;
+}
+
+/* -----------------------------------------------------------
+   6. КАНБАН (KANBAN)
+----------------------------------------------------------- */
+.kanban-col {
+    min-width: 300px;
+    background: #edf2f7 !important;
+    border-radius: 10px !important;
+}
+
+.col-title {
+    font-weight: 800;
+    font-size: 16px;
+    color: #2d3748;
+}
+
+.task-card {
+    background: var(--white);
+    border-left: 6px solid #cbd5e0;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.task-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+.task-card.event { border-left-color: var(--primary); }
+.task-card.task { border-left-color: #48bb78; }
+
+.status-select {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+/* -----------------------------------------------------------
+   7. МОДАЛЬНОЕ ОКНО (MODAL)
+----------------------------------------------------------- */
+.modal-overlay {
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(6px);
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-content-custom {
+    animation: modalIn 0.3s ease-out;
+}
+
+@keyframes modalIn {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* -----------------------------------------------------------
+   8. ФУТЕР (FOOTER)
+----------------------------------------------------------- */
+.site-footer {
+    background: #111111;
+    color: #999999;
+    padding: 80px 0;
+    margin-top: 120px;
+    border-top: 6px solid var(--gold);
+}
+
+.site-footer p {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.footer-links a {
+    color: #666;
+    margin: 0 15px;
+    font-size: 14px;
+}
+
+.footer-links a:hover {
+    color: var(--gold);
+}
+
+/* -----------------------------------------------------------
+   9. АДАПТИВНОСТЬ
+----------------------------------------------------------- */
+@media (max-width: 991px) {
+    .main-nav { display: none; }
+    .hero-title { font-size: 3rem; }
+}
+
+@media (max-width: 768px) {
+    .calendar-grid { grid-template-columns: repeat(7, 1fr); }
+    .cell { min-height: 80px; }
+    .day-num { font-size: 11px; }
+}
+/* Общие исправления удобства */
+.container {
+    max-width: 1200px; /* Ограничиваем ширину, чтобы не тянулось на весь экран */
+}
+
+.content-limited {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+/* Сжимаем Hero-секцию (было слишком огромно) */
+.hero-section {
+    height: 50vh; /* Уменьшили высоту */
+    min-height: 400px;
+}
+
+.hero-title {
+    font-size: 3rem; /* Чуть меньше шрифт */
+}
+
+/* Компактные карточки мероприятий */
+.event-card-simple {
+    padding: 20px !important;
+    border-radius: 4px;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* УДОБСТВО ЛИЧНОГО КАБИНЕТА */
+
+/* Делаем Канбан прокручиваемым по горизонтали, если колонок много, 
+   но компактным внутри */
+.kanban-container {
+    display: flex;
+    gap: 15px;
+    overflow-x: auto;
+    padding-bottom: 20px;
+    align-items: flex-start;
+}
+
+.kanban-col {
+    min-width: 280px; /* Уменьшили ширину колонки */
+    max-width: 320px;
+    background: #ebedef !important;
+    padding: 12px !important;
+}
+
+.task-card {
+    padding: 12px !important;
+    margin-bottom: 10px !important;
+    font-size: 0.9rem;
+}
+
+.task-card h6 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+/* Компактный календарь */
+.calendar-grid {
+    border: 1px solid #dee2e6;
+}
+
+.cell {
+    min-height: 90px; /* Уменьшили высоту ячеек */
+    padding: 4px !important;
+}
+
+.day-num {
+    font-size: 12px;
+    margin-bottom: 2px;
+}
+
+.mini-badge {
+    font-size: 9px;
+    padding: 2px 5px;
+    margin-bottom: 2px;
+    white-space: normal; /* Текст может переноситься, если не влезает */
+    line-height: 1.1;
+}
+
+/* Кнопки */
+.btn-main-action {
+    padding: 15px 35px; /* Уменьшили гигантские отступы */
+    font-size: 16px;
+    cursor: pointer;
+}
+
+/* Боковая панель в ЛК */
+.user-sidebar-card {
+    padding: 20px !important;
+}
+
+.user-avatar-big {
+    width: 60px;
+    height: 60px;
+    font-size: 20px;
+}
+
+.nav-link {
+    padding: 8px 10px !important;
+    font-size: 14px;
+}
+
+/* --- ГЛОБАЛЬНЫЕ ОГРАНИЧЕНИЯ --- */
+.container {
+    max-width: 1140px !important; /* Не дает интерфейсу разъезжаться на весь экран */
+}
+
+.compact-container {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+/* --- HERO СЕКЦИЯ (Компактная) --- */
+.hero-section {
+    height: 450px; /* Фиксированная высота вместо 80vh */
+    background: url('https://itclastersib.ru/wp-content/themes/itclaster/images/top-bg.jpg') no-repeat center center;
+    background-size: cover;
+    position: relative;
+    margin-top: -20px;
+}
+
+.hero-content-box {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.hero-title {
+    font-size: 3.2rem;
+    font-weight: 800;
+    margin-bottom: 0;
+}
+
+.hero-description {
+    font-size: 1.1rem;
+    margin-bottom: 30px;
+    opacity: 0.9;
+}
+
+/* --- КНОПКА (ТЕПЕРЬ ВИДНА И КЛИКАБЕЛЬНА) --- */
+.btn-main-action {
+    background: #ceae60;
+    color: white;
+    border: none;
+    padding: 14px 40px;
+    font-weight: 800;
+    font-size: 16px;
+    text-transform: uppercase;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.3s;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.btn-main-action:hover {
+    background: #b3954d;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+/* --- КОМПАКТНЫЕ КАРТОЧКИ --- */
+.event-card-compact {
+    background: white;
+    padding: 18px;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border-top: 4px solid #007bff;
+    height: 100%;
+    transition: 0.2s;
+}
+
+.event-card-compact:hover {
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.event-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 8px 0;
+    color: #222;
+}
+
+.event-loc {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+/* --- ЛИЧНЫЙ КАБИНЕТ (СЖАТИЕ) --- */
+.calendar-grid {
+    gap: 1px; /* Тонкие линии */
+}
+
+.cell {
+    min-height: 80px !important; /* Было 120, теперь 80 */
+    padding: 6px !important;
+}
+
+.mini-badge {
+    font-size: 9px !important;
+    padding: 2px 4px !important;
+}
+
+.kanban-col {
+    min-width: 260px !important; /* Более узкие колонки */
+    padding: 10px !important;
+}
+
+.task-card {
+    padding: 10px !important;
+    font-size: 0.85rem;
+}
+
+/* --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ --- */
+.container {
+    max-width: 1100px !important; /* Ограничиваем ширину для удобства */
+}
+
+/* --- HERO СЕКЦИЯ (ЧИНИМ КНОПКУ) --- */
+.hero-section {
+    height: 480px;
+    background: url('https://itclastersib.ru/wp-content/themes/itclaster/images/top-bg.jpg') no-repeat center center;
+    background-size: cover;
+    position: relative;
+    color: white;
+    margin-top: -20px;
+}
+
+.hero-bg-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0, 41, 107, 0.85) 0%, rgba(0, 20, 50, 0.7) 100%);
+    z-index: 1; /* Оверлей внизу */
+}
+
+.hero-content-wrapper {
+    position: relative;
+    z-index: 2; /* Контент СВЕРХУ, чтобы кнопка нажималась */
+    max-width: 650px;
+}
+
+.hero-title {
+    font-size: 3.5rem;
+    font-weight: 800;
+    margin: 0;
+    line-height: 1.1;
+}
+
+.hero-divider {
+    width: 60px;
+    height: 4px;
+    background: var(--gold);
+    margin: 20px auto;
+}
+
+.hero-description {
+    font-size: 1.15rem;
+    margin-bottom: 30px;
+    opacity: 0.9;
+}
+
+/* КНОПКА (СТИЛЬ И ФУНКЦИЯ) */
+.btn-main-action {
+    background: #ceae60;
+    color: white;
+    border: none;
+    padding: 15px 45px;
+    font-weight: 800;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.btn-main-action:hover {
+    background: #b3954d;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+
+/* --- КОМПАКТНАЯ ПРОГРАММА --- */
+.event-card-compact {
+    background: white;
+    padding: 20px;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border-top: 4px solid #007bff;
+    height: 100%;
+}
+
+.date-badge {
+    color: #007bff;
+    font-weight: 800;
+    font-size: 12px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.event-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.event-info {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+/* --- ЛИЧНЫЙ КАБИНЕТ (УДОБСТВО) --- */
+.kanban-col {
+    min-width: 280px !important;
+    padding: 12px !important;
+}
+
+.cell {
+    min-height: 85px !important; /* Компактный календарь */
+    padding: 6px !important;
+}
+
+.mini-badge {
+    font-size: 9px !important;
+    padding: 2px 6px !important;
+}
+
+/* Стили для управления календарем */
+.calendar-title {
+    font-weight: 800;
+    font-size: 1.5rem;
+    color: #2c3e50;
+    min-width: 200px;
+}
+
+.calendar-title span {
+    color: var(--primary);
+    font-weight: 400;
+}
+
+.btn-group .btn {
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    border-color: #dee2e6;
+}
+
+.btn-group .btn:hover {
+    background-color: #f8f9fa;
+    color: var(--primary);
+}
+
+/* Подсветка текущего дня должна быть заметной, но не вырвиглазной */
+.today-cell {
+    background: #fffbe6 !important; /* Нежно-желтый */
+    border: 1px solid #ffe58f !important;
+}
+
+.today-cell .day-num {
+    background: var(--primary);
+    color: white;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 12px;
+}
+
+/* --- СТИЛИ МОДАЛЬНОГО ОКНА (CREATE MODAL) --- */
+
+/* Фон-затемнение */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 41, 107, 0.6); /* Темно-синий полупрозрачный */
+    backdrop-filter: blur(4px); /* Размытие заднего фона */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Сама карточка формы */
+.modal-content-custom {
+    background: white;
+    border-radius: 12px;
+    border-top: 6px solid var(--primary); /* Синяя полоска сверху, как в сайдбаре */
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    animation: slideUp 0.3s ease-out;
+}
+
+/* Стилизация полей ввода */
+.modal-content-custom .form-label {
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+}
+
+.modal-content-custom .form-control, 
+.modal-content-custom .form-select {
+    border: 1px solid #e0e6ed;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.modal-content-custom .form-control:focus, 
+.modal-content-custom .form-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    outline: none;
+}
+
+/* Кнопка закрытия (крестик) */
+.btn-close:hover {
+    color: var(--primary) !important;
+    transform: rotate(90deg);
+    transition: 0.2s;
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Дополнительная настройка для маленьких бейджей в календаре, 
+   чтобы они не слипались при добавлении новых задач */
+.mini-badge {
+    margin-bottom: 3px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+.mini-badge.event {
+    background: #e7f3ff;
+    color: #007bff;
+    border-left: 3px solid #007bff;
+}
+
+.mini-badge.task {
+    background: #f0fdf4;
+    color: #16a34a;
+    border-left: 3px solid #16a34a;
+}
+
+/* --- СТИЛИ ДЛЯ СКРУГЛЕНИЯ И МОДЕРНИЗАЦИИ МОДАЛКИ --- */
+
+/* 1. Затемнение фона: делаем мягче и добавляем размытие */
+.modal-overlay {
+    backdrop-filter: blur(4px); /* Эффект матового стекла на фоне */
+    background: rgba(0, 41, 107, 0.6); /* Темно-синий полупрозрачный, как на оригинале */
+    animation: fadeInModal 0.2s ease-out; /* Плавное появление */
+}
+
+/* 2. Сама карточка формы: скругляем и добавляем тень */
+.modal-content-custom {
+    border-radius: 12px; /* Скругление */
+    border-top: 6px solid #007bff; /* Та самая синяя полоска, как в сайдбаре */
+    box-shadow: 0 15px 40px rgba(0,0,0,0.15); /* Мягкая тень для эффекта парения */
+    animation: slideInModal 0.3s ease-out; /* Всплывание снизу */
+}
+
+/* 3. Кнопка закрытия (крестик) */
+.btn-close:hover {
+    color: #007bff !important; /* Крестик синеет при наведении */
+    transform: rotate(90deg);
+    transition: 0.2s;
+}
+
+/* 4. Поля ввода: убираем грубые рамки, добавляем мягкость */
+.modal-content-custom .form-control,
+.modal-content-custom .form-select {
+    border: 1px solid #e0e6ed; /* Тонкая серая граница */
+    border-radius: 6px; /* Небольшое скругление для инпутов */
+    padding: 10px 12px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+/* 5. Эффект при клике в поле ввода */
+.modal-content-custom .form-control:focus,
+.modal-content-custom .form-select:focus {
+    border-color: #007bff; /* Синяя граница */
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1); /* Легкое синее свечение вокруг */
+    outline: none;
+}
+
+/* 6. Кнопки внизу */
+.modal-content-custom .btn {
+    border-radius: 6px; /* Скругляем кнопки */
+    transition: var(--transition);
+}
+
+/* Анимации */
+@keyframes fadeInModal { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInModal { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }  
+
+/* --- ГЛОБАЛЬНЫЙ ФОН ДЛЯ ПАНЕЛИ --- */
+.dashboard-container {
+    background-color: #f8fafc;
+    min-height: calc(100vh - 100px);
+    padding: 40px 0;
+}
+
+/* --- КАРТОЧКА САЙДБАРА --- */
+.user-sidebar-card {
+    border-radius: 16px;
+    position: sticky;
+    top: 120px;
+}
+
+.role-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    background: #eef6ff;
+    color: var(--primary);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.dashboard-nav .nav-link {
+    border: 1px solid transparent;
+    transition: 0.2s;
+    color: #475569;
+}
+
+.dashboard-nav .nav-link:hover {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: var(--primary);
+}
+
+.btn-logout {
+    background: none;
+    border: none;
+    color: #ef4444;
+    font-weight: 600;
+    padding: 8px 15px;
+    width: 100%;
+    text-align: left;
+    border-radius: 6px;
+    transition: 0.2s;
+}
+
+.btn-logout:hover {
+    background: #fef2f2;
+}
+
+/* --- КАРТОЧКА КОНТЕНТА --- */
+.content-card {
+    background: white;
+    border-radius: 16px;
+    overflow: hidden;
+    min-height: 600px;
+}
+
+/* --- КАНБАН (ФИКС НЕУДОБСТВА) --- */
+.kanban-container {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    overflow-x: auto; /* Позволяет листать, если колонки не лезут */
+    background: #f1f5f9;
+}
+
+.kanban-col {
+    min-width: 300px;
+    max-width: 300px;
+    background: #e2e8f0;
+    border-radius: 12px;
+    padding: 15px;
+}
+
+/* --- КАЛЕНДАРЬ (ПРАВИЛЬНЫЙ ГРИД) --- */
+.calendar-grid {
+    border: none;
+    background: #f1f5f9;
+    gap: 2px;
+}
+
+.cell {
+    min-height: 100px;
+    border: none;
+}
+
+/* Контейнер для всего личного кабинета */
+.dashboard-wrapper {
+    display: flex; /* Делаем колонки бок о бок */
+    min-height: calc(100vh - 100px); /* Высота на весь экран минус шапка */
+    background-color: #f8fafc;
+    margin-top: -20px; /* Убираем лишний отступ сверху */
+}
+
+/* Стили для боковой панели */
+.dashboard-sidebar {
+    width: 280px; /* Фиксированная ширина */
+    background: white;
+    border-right: 1px solid #e2e8f0;
+    padding: 30px 20px;
+    position: sticky; /* Липкий сайдбар */
+    top: 100px;
+    height: fit-content;
+}
+
+/* Стили для основной части с контентом */
+.dashboard-main-content {
+    flex: 1; /* Занимает всё свободное пространство */
+    padding: 30px;
+}
+
+/* Улучшаем навигацию в сайдбаре */
+.sidebar-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 30px;
+}
+
+.sidebar-nav-list .nav-link {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px !important;
+    background: #f1f5f9;
+    color: #475569;
+    border-radius: 10px;
+    font-weight: 700;
+    transition: 0.2s;
+}
+
+.sidebar-nav-list .nav-link:hover {
+    background: #e2e8f0;
+    color: var(--primary);
+}
+
+/* --- СТИЛЬНЫЕ КНОПКИ "СОЗДАТЬ" --- */
+.btn-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 10px 20px !important;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+    transition: all 0.3s ease !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 13px !important;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 123, 255, 0.4);
+    filter: brightness(1.1);
+}
+
+/* --- КРАСИВЫЕ ПЕРЕКЛЮЧАТЕЛИ МЕСЯЦЕВ --- */
+.calendar-header .btn-group {
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 10px;
+    display: flex;
+    gap: 2px;
+}
+
+.calendar-header .btn-outline-secondary {
+    border: none !important;
+    background: transparent !important;
+    color: #475569 !important;
+    font-weight: 700 !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    transition: 0.2s;
+}
+
+.calendar-header .btn-outline-secondary:hover {
+    background: white !important;
+    color: var(--primary) !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+/* --- КНОПКИ В САЙДБАРЕ --- */
+.sidebar-nav-list .nav-link {
+    border: 1px solid transparent !important;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Активный пункт меню */
+.sidebar-nav-list .nav-link.active {
+    background: #eef6ff !important;
+    color: var(--primary) !important;
+    border-color: rgba(0, 123, 255, 0.2) !important;
+}
+
+/* Кнопка выхода */
+.btn-logout {
+    border-radius: 8px !important;
+    font-weight: 700;
+    transition: 0.2s;
+}
+
+.btn-logout:hover {
+    background: #fff1f1 !important;
+    color: #dc3545 !important;
+}
