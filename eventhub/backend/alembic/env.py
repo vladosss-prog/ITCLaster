@@ -23,6 +23,9 @@ from models import (
     SectionReport,
     ChatRoom,
     ChatMessage,
+    UserReportSchedule,
+    ReportComment,
+    ReportFeedback,
 )
 
 config = context.config

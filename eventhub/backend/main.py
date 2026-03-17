@@ -23,8 +23,9 @@ app.add_middleware(
 # app.include_router(participants.router, prefix="/api/participants",  tags=["Participants"])
 # app.include_router(chat.router,         prefix="/api/chat",         tags=["Chat"])
 
-from routers import chat
+from routers import chat, participants
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(participants.router, prefix="/api", tags=["Participants"])
 
 @app.get("/", tags=["Health"])
 def root():

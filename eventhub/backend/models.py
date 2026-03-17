@@ -127,3 +127,51 @@ class ChatMessage(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
+
+# --- Back 5: participant program / schedule / comments / feedback ---
+# Minimal new entities, aligned with existing project's "no relationships, only FKs" style.
+
+
+class UserReportSchedule(Base):
+    """
+    Stores user's personal schedule (many-to-many User <-> Report).
+    """
+
+    __tablename__ = "user_report_schedules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
+    report_id: Mapped[str] = mapped_column(String, ForeignKey("reports.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class ReportComment(Base):
+    """
+    Comment under a report. Answer is stored in the same row (curator/speaker reply).
+    """
+
+    __tablename__ = "report_comments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    report_id: Mapped[str] = mapped_column(String, ForeignKey("reports.id"), nullable=False)
+    author_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer_by_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    answer_created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ReportFeedback(Base):
+    """
+    Rating for a report (1..5). One user can rate a report once (upsert on повтор).
+    """
+
+    __tablename__ = "report_feedbacks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    report_id: Mapped[str] = mapped_column(String, ForeignKey("reports.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
