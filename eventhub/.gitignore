@@ -1,0 +1,31 @@
+# Виртуальное окружение
+venv/
+.venv/
+env/
+
+# Секреты — НИКОГДА не пушим
+.env
+
+# Python кэш
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Cursor / VS Code
+.cursor/
+.vscode/
+
+# Node.js
+node_modules/
+dist/
+build/
+.next/
+
+# macOS
+.DS_Store
+
+# pytest
+.pytest_cache/
+htmlcov/
+
