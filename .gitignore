@@ -1,34 +1,23 @@
-# Виртуальное окружение Python — у каждого своё локальное
 venv/
 .venv/
 env/
 
-# Секреты — НИКОГДА не пушим пароли
 .env
 
-# Кэш Python — генерируется автоматически, не нужен в репо
 __pycache__/
 *.pyc
 *.pyo
 
-# Cursor и VS Code — личные настройки редактора
 .cursor/
 .vscode/
 
-# Node.js (для фронта)
 node_modules/
 dist/
 build/
 
-# macOS мусор
 .DS_Store
 
-# Alembic временные файлы
 *.pyc
-```
 
-Главное правило: `.env` — никогда в гит, потому что там пароль от базы данных. Вместо него есть `.env.example` где написано что должно быть, но без самих паролей:
-```
-# .env.example (этот файл пушим в гит)
 DATABASE_URL=postgresql://postgres:ВАШ_ПАРОЛЬ@localhost/eventhub_db
 SECRET_KEY=придумайте_любую_длинную_строку
