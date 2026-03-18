@@ -33,6 +33,21 @@ import { CreateEventPage } from "./pages/CreateEventPage";
 import { ReportPage } from "./pages/ReportPage";
 
 // ═══════════════════════════════════════════════════════════════
+// DIRECT FETCH HELPERS — вызовы к реальному бэкенду
+// ═══════════════════════════════════════════════════════════════
+const API_BASE = "http://localhost:8000";
+function _authHeaders(): Record<string, string> {
+  const t = localStorage.getItem("access_token");
+  return t ? { Authorization: "Bearer " + t, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+}
+async function apiFetch<T = any>(method: string, path: string, body?: any): Promise<T> {
+  const res = await fetch(API_BASE + path, { method, headers: _authHeaders(), body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 204) return undefined as any;
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || res.status + ""); }
+  return res.json();
+}
+
+// ═══════════════════════════════════════════════════════════════
 // GLOBAL CSS
 // ═══════════════════════════════════════════════════════════════
 const GLOBAL_CSS = `
@@ -740,38 +755,18 @@ function LandingPage() {
 // ═══════════════════════════════════════════════════════════════
 // 2. AUTH PAGE
 // ═══════════════════════════════════════════════════════════════
-function AuthPage({
-  onLogin,
-  onRegister,
-  loading,
-  error,
-}: {
+function AuthPage({ onLogin, onRegister, loading, error }: {
   onLogin: (email: string, password: string) => void;
   onRegister: (email: string, password: string, full_name: string) => void;
-  loading: boolean;
-  error: string;
+  loading: boolean; error: string;
 }) {
-  const [isRegister, setIsRegister] = useState(false);
+  const [isRegister, setIsRegister] = useState(() => new URLSearchParams(window.location.search).has("register"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const navigate = useNavigate();
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isRegister) {
-      onRegister(email, password, fullName);
-    } else {
-      onLogin(email, password);
-    }
-  };
-
-  const switchMode = () => {
-    setIsRegister(!isRegister);
-    setEmail("");
-    setPassword("");
-    setFullName("");
-  };
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); isRegister ? onRegister(email, password, fullName) : onLogin(email, password); };
+  const switchMode = () => { setIsRegister(!isRegister); setEmail(""); setPassword(""); setFullName(""); };
 
   return (
     <div className="auth-page">
@@ -814,29 +809,13 @@ function AuthPage({
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form
+          onSubmit={handleSubmit}
+        >
           {isRegister && (
             <div style={{ marginBottom: 14 }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                  marginBottom: 5,
-                }}
-              >
-                ФИО
-              </label>
-              <input
-                type="text"
-                className="auth-input"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Иванов Иван Иванович"
-                required
-              />
+              <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 5 }}>ФИО</label>
+              <input type="text" className="auth-input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" required />
             </div>
           )}
           <div style={{ marginBottom: 14 }}>
@@ -881,7 +860,6 @@ function AuthPage({
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              minLength={4}
             />
           </div>
           <button type="submit" className="auth-btn" disabled={loading}>
@@ -890,70 +868,62 @@ function AuthPage({
         </form>
 
         <div style={{ textAlign: "center", marginTop: 16 }}>
-          <span
-            onClick={switchMode}
-            style={{
-              fontSize: 13,
-              color: "var(--primary)",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
+          <span onClick={switchMode} style={{ fontSize: 13, color: "var(--primary)", fontWeight: 700, cursor: "pointer" }}>
             {isRegister ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться"}
           </span>
         </div>
 
-        {/* Demo buttons — показываем только на странице входа */}
+        {/* Demo buttons — только на странице входа */}
         {!isRegister && (
+        <div
+          style={{
+            marginTop: 20,
+            borderTop: "1.5px solid var(--border)",
+            paddingTop: 16,
+          }}
+        >
           <div
             style={{
-              marginTop: 16,
-              borderTop: "1.5px solid var(--border)",
-              paddingTop: 16,
+              fontSize: 11,
+              fontWeight: 800,
+              color: "var(--text-muted)",
+              textTransform: "uppercase",
+              textAlign: "center",
+              marginBottom: 10,
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                textAlign: "center",
-                marginBottom: 10,
-              }}
-            >
-              Быстрый Demo вход
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {[
-                { email: "org@it.ru", pass: "org", label: "👔 Организатор", bg: "var(--primary)" },
-                { email: "user@it.ru", pass: "user", label: "🙋 Участник", bg: "#16a34a" },
-                { email: "curator@it.ru", pass: "curator", label: "📋 Куратор", bg: "#6b7280" },
-              ].map((d) => (
-                <button
-                  key={d.email}
-                  onClick={() => {
-                    setEmail(d.email);
-                    setPassword(d.pass);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: 8,
-                    background: d.bg,
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontFamily: "Nunito, sans-serif",
-                  }}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
+            Быстрый Demo вход
           </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { email: "org@it.ru", pass: "org", label: "👔 Организатор", bg: "var(--primary)" },
+              { email: "user@it.ru", pass: "user", label: "🙋 Участник", bg: "#16a34a" },
+              { email: "curator@it.ru", pass: "curator", label: "📋 Куратор", bg: "#6b7280" },
+            ].map((d) => (
+              <button
+                key={d.email}
+                onClick={() => {
+                  setEmail(d.email);
+                  setPassword(d.pass);
+                }}
+                style={{
+                  flex: 1,
+                  padding: 8,
+                  background: d.bg,
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontFamily: "Nunito, sans-serif",
+                }}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
         )}
 
         <div style={{ textAlign: "center", marginTop: 12 }}>
@@ -1256,30 +1226,26 @@ function ChatView({
     }
     (async () => {
       try {
-        const res = await chatAPI.getMy();
-        const apiRooms: DemoChatRoom[] = (res.data || []).map((r: ChatRoom) => ({
-          id: r.id,
-          event_id: r.event_id || null,
-          type: r.type,
-          name: (r as any).name || (r.type === "GROUP" ? `Группа ${r.id.slice(0, 6)}` : `ЛС ${r.id.slice(0, 6)}`),
-          avatar: r.type === "GROUP" ? "🏢" : "💬",
-        }));
-        setRooms(apiRooms);
-        if (apiRooms.length) {
-          setActiveRoomId(apiRooms[0].id);
+        const apiRooms = await apiFetch<any[]>("GET", "/api/chat/my");
+        const mapped: DemoChatRoom[] = [];
+        for (const r of (apiRooms || [])) {
+          let name = r.type === "GROUP" ? "Группа" : "ЛС";
+          if (r.type === "GROUP" && r.event_id) {
+            try { const ev = await apiFetch<any>("GET", "/api/events/" + r.event_id); name = ev.title; } catch {}
+          }
+          mapped.push({ id: r.id, event_id: r.event_id || null, type: r.type, name, avatar: r.type === "GROUP" ? "🏢" : "💬" });
+        }
+        setRooms(mapped);
+        if (mapped.length) {
+          setActiveRoomId(mapped[0].id);
           try {
-            const msgRes = await chatAPI.getMessages(apiRooms[0].id, { limit: 50 });
-            const items = msgRes.data?.items || msgRes.data || [];
-            setMessages(
-              (Array.isArray(items) ? items : []).map((m: ChatMessage) => ({
-                id: m.id,
-                room_id: m.room_id,
-                user_id: m.user_id,
-                user_name: m.user_name || "Пользователь",
-                text: m.text,
-                created_at: m.created_at,
-              }))
-            );
+            const data = await apiFetch<any>("GET", "/api/chat/" + mapped[0].id + "/messages?limit=50");
+            const items = data.items || data || [];
+            setMessages((Array.isArray(items) ? items : []).map((m: any) => ({
+              id: m.id, room_id: m.room_id, user_id: m.user_id,
+              user_name: m.user_id === user.id ? user.full_name : "Пользователь",
+              text: m.text, created_at: m.created_at,
+            })));
           } catch {}
         }
       } catch {}
@@ -1318,40 +1284,14 @@ function ChatView({
     setInputText("");
 
     if (demoMode) {
-      const newMsg: DemoChatMsg = {
-        id: `msg-${Date.now()}`,
-        room_id: activeRoomId,
-        user_id: user.id,
-        user_name: user.full_name,
-        text,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, newMsg]);
-    } else {
-      try {
-        const res = await chatAPI.sendMessage(activeRoomId, { text });
-        const sent: ChatMessage = res.data;
-        const newMsg: DemoChatMsg = {
-          id: sent.id,
-          room_id: sent.room_id,
-          user_id: sent.user_id,
-          user_name: sent.user_name || user.full_name,
-          text: sent.text,
-          created_at: sent.created_at,
-        };
-        setMessages((prev) => [...prev, newMsg]);
-      } catch {
-        // Fallback — добавляем локально если бэкенд недоступен
-        const newMsg: DemoChatMsg = {
-          id: `msg-${Date.now()}`,
-          room_id: activeRoomId,
-          user_id: user.id,
-          user_name: user.full_name,
-          text,
-          created_at: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, newMsg]);
-      }
+      setMessages((prev) => [...prev, { id: `msg-${Date.now()}`, room_id: activeRoomId, user_id: user.id, user_name: user.full_name, text, created_at: new Date().toISOString() }]);
+      return;
+    }
+    try {
+      const msg = await apiFetch<any>("POST", `/api/chat/${activeRoomId}/messages`, { text });
+      setMessages((prev) => [...prev, { id: msg.id, room_id: msg.room_id, user_id: msg.user_id, user_name: user.full_name, text: msg.text, created_at: msg.created_at }]);
+    } catch {
+      setMessages((prev) => [...prev, { id: `msg-${Date.now()}`, room_id: activeRoomId, user_id: user.id, user_name: user.full_name, text, created_at: new Date().toISOString() }]);
     }
   };
 
@@ -1360,20 +1300,14 @@ function ChatView({
     setActiveRoomId(roomId);
     if (!demoMode) {
       try {
-        const res = await chatAPI.getMessages(roomId, { limit: 50 });
-        const items = res.data?.items || res.data || [];
-        const fetched = (Array.isArray(items) ? items : []).map((m: ChatMessage) => ({
-          id: m.id,
-          room_id: m.room_id,
-          user_id: m.user_id,
-          user_name: m.user_name || "Пользователь",
-          text: m.text,
-          created_at: m.created_at,
+        const data = await apiFetch<any>("GET", `/api/chat/${roomId}/messages?limit=50`);
+        const items = data.items || data || [];
+        const fetched = (Array.isArray(items) ? items : []).map((m: any) => ({
+          id: m.id, room_id: m.room_id, user_id: m.user_id,
+          user_name: m.user_id === user.id ? user.full_name : "Пользователь",
+          text: m.text, created_at: m.created_at,
         }));
-        setMessages((prev) => [
-          ...prev.filter((m) => m.room_id !== roomId),
-          ...fetched,
-        ]);
+        setMessages((prev) => [...prev.filter((m) => m.room_id !== roomId), ...fetched]);
       } catch {}
     }
   };
@@ -1392,8 +1326,8 @@ function ChatView({
       setDmResults(demoUsers);
     } else {
       try {
-        const res = await usersAPI.search(q);
-        setDmResults((res.data || []).filter((u: User) => u.id !== user.id));
+        const users = await apiFetch<any[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`);
+        setDmResults((users || []).filter((u: any) => u.id !== user.id));
       } catch { setDmResults([]); }
     }
     setDmSearching(false);
@@ -1411,22 +1345,19 @@ function ChatView({
       setDmResults([]);
       return;
     }
-
-    let roomId = `cr-dm-${Date.now()}`;
-    if (!demoMode) {
-      try {
-        const res = await chatAPI.createDirect({ user_id: targetUser.id });
-        roomId = res.data.id;
-      } catch {}
-    }
-
     const newRoom: DemoChatRoom = {
-      id: roomId,
+      id: `cr-dm-${Date.now()}`,
       event_id: null,
       type: "DIRECT",
       name: targetUser.full_name,
       avatar: targetUser.full_name[0],
     };
+    if (!demoMode) {
+      try {
+        const res = await apiFetch<any>("POST", "/api/chat/direct", { user_id: targetUser.id });
+        newRoom.id = res.id;
+      } catch {}
+    }
     setRooms((prev) => [...prev, newRoom]);
     setActiveRoomId(newRoom.id);
     setShowNewDM(false);
@@ -1645,16 +1576,12 @@ function OrganizerDashboard({
     }
     (async () => {
       try {
-        const evRes = await eventsAPI.getAll();
-        const evs: EventData[] = evRes.data || [];
-        setEvents(evs);
-        if (evs.length) setSelEv(evs[0].id);
+        const evs = await apiFetch<EventData[]>("GET", "/api/events/");
+        setEvents(evs || []);
+        if (evs?.length) setSelEv(evs[0].id);
         const all: Task[] = [];
-        for (const ev of evs) {
-          try {
-            const r = await tasksAPI.getByEvent(ev.id);
-            all.push(...(r.data || []));
-          } catch {}
+        for (const ev of (evs || [])) {
+          try { const ts = await apiFetch<Task[]>("GET", `/api/tasks/?event_id=${ev.id}`); all.push(...(ts || [])); } catch {}
         }
         setTasks(all);
       } catch {}
@@ -1677,7 +1604,7 @@ function OrganizerDashboard({
   // --- Канбан: смена статуса ---
   const moveTask = async (id: string, s: TaskStatus) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: s } : t)));
-    if (!demoMode) try { await tasksAPI.updateStatus(id, s); } catch {}
+    if (!demoMode) try { await apiFetch("PATCH", `/api/tasks/${id}/status`, { status: s }); } catch {}
   };
 
   // --- FIX #2: добавление задачи ПРИВЯЗЫВАЕТСЯ к selEv ---
@@ -1697,12 +1624,12 @@ function OrganizerDashboard({
       setTasks((prev) => [...prev, newTask]);
     } else {
       try {
-        const res = await tasksAPI.create({
+        const res = await apiFetch<Task>("POST", "/api/tasks/", {
           event_id: selEv,
           title: newTitle.trim(),
           due_date: newDue || undefined,
         });
-        setTasks((prev) => [...prev, res.data]);
+        setTasks((prev) => [...prev, res]);
       } catch {
         setTasks((prev) => [...prev, newTask]);
       }
@@ -1713,7 +1640,7 @@ function OrganizerDashboard({
 
   const delTask = async (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    if (!demoMode) try { await tasksAPI.delete(id); } catch {}
+    if (!demoMode) try { await apiFetch("DELETE", `/api/tasks/${id}`); } catch {}
   };
 
   const navItems = [
@@ -1983,17 +1910,21 @@ function ParticipantDashboard({
       setEvents(DEMO_EVENTS.filter((e) => e.status === "PUBLISHED"));
       setLoading(false);
     } else {
-      eventsAPI
-        .getAll()
-        .then((res) => setEvents((res.data || []).filter((e: EventData) => e.status === "PUBLISHED")))
-        .catch(() => {})
-        .finally(() => setLoading(false));
+      (async () => {
+        try {
+          const evs = await apiFetch<EventData[]>("GET", "/api/events/public");
+          setEvents(evs || []);
+        } catch {
+          try { const evs = await apiFetch<EventData[]>("GET", "/api/events/"); setEvents((evs || []).filter((e: EventData) => e.status === "PUBLISHED")); } catch {}
+        }
+        finally { setLoading(false); }
+      })();
     }
   }, [demoMode]);
 
   const register = async (id: string) => {
     if (regs.has(id)) return;
-    if (!demoMode) try { await participantsAPI.registerToEvent(id); } catch {}
+    if (!demoMode) try { await apiFetch("POST", `/api/events/${id}/register`); } catch {}
     setRegs((prev) => new Set(prev).add(id));
   };
 
@@ -2068,7 +1999,7 @@ function ParticipantDashboard({
                     ))}
                   </div>
                 ) : (
-                  <EmptyState icon="📅" title="Расписание пока пусто" description="Зарегистрируйтесь на мероприятие и добавьте доклады." />
+                  <RealScheduleView />
                 )}
               </div>
             )}
@@ -2102,6 +2033,39 @@ function ParticipantDashboard({
 }
 
 // ═══════════════════════════════════════════════════════════════
+// REAL SCHEDULE VIEW — загрузка расписания с бэкенда GET /api/schedule/my
+// ═══════════════════════════════════════════════════════════════
+function RealScheduleView() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try { const data = await apiFetch<any[]>("GET", "/api/schedule/my"); setItems(data || []); } catch {}
+      finally { setLoading(false); }
+    })();
+  }, []);
+  if (loading) return <Spinner label="Загружаем расписание..." />;
+  if (!items.length) return <EmptyState icon="📅" title="Расписание пока пусто" description="Зарегистрируйтесь на мероприятие и добавьте доклады." />;
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      {items.map((item: any, i: number) => {
+        const r = item.report; const s = item.section;
+        const st = r.start_time ? new Date(r.start_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "";
+        const et = r.end_time ? new Date(r.end_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "";
+        return (
+          <div key={i} style={{ background: "white", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)" }}>
+            {st && <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 4 }}>{st}{et ? ` – ${et}` : ""}</div>}
+            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", marginBottom: 4 }}>{r.title}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>📍 {s.location || "—"} · {s.title}</div>
+            {r.speaker_name && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>🎤 {r.speaker_name}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // APP ROOT — роутинг
 // ═══════════════════════════════════════════════════════════════
 function AppContent() {
@@ -2126,9 +2090,8 @@ function AppContent() {
     }
 
     if (token) {
-      authAPI
-        .me()
-        .then((res) => setUser(res.data))
+      apiFetch<User>("GET", "/api/auth/me")
+        .then((u) => setUser(u))
         .catch(() => localStorage.removeItem("access_token"))
         .finally(() => setInitLoading(false));
     } else {
@@ -2151,15 +2114,14 @@ function AppContent() {
       return;
     }
 
-    // Real backend
+    // Real backend: POST /api/auth/login → { access_token, token_type, user }
     try {
-      const res = await authAPI.login({ email, password });
-      localStorage.setItem("access_token", res.data.access_token);
-      const meRes = await authAPI.me();
-      setUser(meRes.data);
+      const res = await apiFetch<{ access_token: string; user: User }>("POST", "/api/auth/login", { email, password });
+      localStorage.setItem("access_token", res.access_token);
+      setUser(res.user);
       setDemoMode(false);
     } catch (e: any) {
-      setAuthError(e?.response?.data?.detail || "Неверный email или пароль");
+      setAuthError(e?.message || "Неверный email или пароль");
     } finally {
       setAuthLoading(false);
     }
@@ -2169,13 +2131,14 @@ function AppContent() {
     setAuthLoading(true);
     setAuthError("");
     try {
-      const res = await authAPI.register({ email, password, full_name });
-      localStorage.setItem("access_token", res.data.access_token);
-      const meRes = await authAPI.me();
-      setUser(meRes.data);
+      // POST /api/auth/register → UserOut (без токена!) → затем login
+      await apiFetch("POST", "/api/auth/register", { email, password, full_name });
+      const res = await apiFetch<{ access_token: string; user: User }>("POST", "/api/auth/login", { email, password });
+      localStorage.setItem("access_token", res.access_token);
+      setUser(res.user);
       setDemoMode(false);
     } catch (e: any) {
-      setAuthError(e?.response?.data?.detail || "Ошибка регистрации. Проверьте данные.");
+      setAuthError(e?.message || "Ошибка регистрации");
     } finally {
       setAuthLoading(false);
     }
