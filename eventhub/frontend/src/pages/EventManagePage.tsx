@@ -439,6 +439,10 @@ const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean
   const [loading, setLoading] = useState(true);
   const [assignSection, setAssignSection] = useState<string | null>(null);
   const [assignSpeakerReport, setAssignSpeakerReport] = useState<Report | null>(null);
+  // Итоговые отчёты кураторов: sectionId → текст отчёта
+  const [curatorReports, setCuratorReports] = useState<Record<string, string>>({});
+  // Средние оценки: reportId → {average, count}
+  const [feedbacks, setFeedbacks] = useState<Record<string, { average: number; count: number }>>({});
 
   // Модалка создания/редактирования секции
   const [secForm, setSecForm] = useState<{ open: boolean; section?: Section }>({ open: false });
@@ -481,7 +485,7 @@ const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean
       console.log("[SectionsTab] all reports loaded:", recs);
       setReports({ ...recs });
 
-      // Загружаем имена пользователей для curator_id → имя
+      // Загружаем имена, итоговые отчёты и оценки параллельно
       try {
         const ur = await _secFetch("GET", "/api/users/search?q=");
         if (ur.ok) {
@@ -491,6 +495,29 @@ const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean
           setUsersMap(map);
         }
       } catch {}
+
+      // Итоговые отчёты кураторов
+      const crMap: Record<string, string> = {};
+      await Promise.all(secs.map(async (s: Section) => {
+        try {
+          const cr = await _secFetch("GET", `/api/sections/${s.id}/curator-report`);
+          if (cr.ok) { const d = await cr.json(); crMap[s.id] = d.text || ""; }
+        } catch {}
+      }));
+      setCuratorReports(crMap);
+
+      // Средние оценки докладов
+      const fbMap: Record<string, { average: number; count: number }> = {};
+      const allReps = Object.values(recs).flat() as any[];
+      await Promise.all(allReps.map(async (r: any) => {
+        try {
+          const fr = await _secFetch("GET", `/api/reports/${r.id}/feedback`);
+          if (fr.ok) { const d = await fr.json(); fbMap[r.id] = { average: d.average || 0, count: d.count || 0 }; }
+          else fbMap[r.id] = { average: 0, count: 0 };
+        } catch { fbMap[r.id] = { average: 0, count: 0 }; }
+      }));
+      setFeedbacks(fbMap);
+
     } catch (e) {
       console.error("reload error:", e);
     }
@@ -675,6 +702,20 @@ const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean
                   <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>Готовность: {s.readiness_percent}%</span>
                 </div>
 
+                {/* Итоговый отчёт куратора */}
+                {curatorReports[s.id] && (
+                  <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "#f0fdf4" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                      📝 Итоговый отчёт куратора
+                    </div>
+                    <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                      {curatorReports[s.id].length > 300
+                        ? curatorReports[s.id].slice(0, 300) + "..."
+                        : curatorReports[s.id]}
+                    </div>
+                  </div>
+                )}
+
                 {/* Доклады */}
                 <div style={{ padding: "12px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -697,6 +738,7 @@ const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean
                               {r.speaker_id
                                 ? <span style={{ color: r.speaker_confirmed ? "#16a34a" : "#92400e" }}>🎤 {(r as any).speaker_name || usersMap[r.speaker_id] || "Спикер"} {r.speaker_confirmed ? "✅" : "⏳"}</span>
                                 : <span style={{ color: "#dc2626" }}>🎤 Спикер не назначен</span>}
+                                  {feedbacks[r.id]?.count > 0 && <span style={{ color: "#f59e0b", fontWeight: 800, fontSize: 11 }}>★ {feedbacks[r.id].average.toFixed(1)} ({feedbacks[r.id].count})</span>}
                             </div>
                           </div>
                           {!demoMode && (

@@ -2543,7 +2543,7 @@ function ParticipantDashboard({
   setSharedRegs: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"program" | "sections" | "kanban" | "schedule" | "questions" | "final_report" | "chat" | "settings">("program");
+  const [tab, setTab] = useState<"program" | "sections" | "my_report" | "kanban" | "schedule" | "questions" | "final_report" | "chat" | "settings">("program");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [selEv, setSelEv] = useState("");
@@ -2842,6 +2842,123 @@ function ParticipantDashboard({
     setSpeakerResults([]);
   };
 
+  // ═══ МОЙ ДОКЛАД (спикер) ═══
+  // Список всех докладов спикера (может быть несколько мероприятий)
+  const [myReports, setMyReports] = useState<any[]>([]);
+  const [myReportLoading, setMyReportLoading] = useState(false);
+  // Текущий выбранный доклад
+  const [myReport, setMyReport] = useState<any>(null);
+  const [myReportConfirmed, setMyReportConfirmed] = useState(false);
+  const [myReportFormat, setMyReportFormat] = useState<string>("");
+  const [myReportSaving, setMyReportSaving] = useState(false);
+  const [myReportSaved, setMyReportSaved] = useState(false);
+  // Комментарии и оценки — per report id
+  const [myReportComments, setMyReportComments] = useState<Record<string, any[]>>({});
+  const [myReportFeedback, setMyReportFeedback] = useState<Record<string, { average: number; count: number }>>({});
+  const [myReportAnswerText, setMyReportAnswerText] = useState<Record<string, string>>({});
+  const [myReportAnswering, setMyReportAnswering] = useState<string>("");
+
+  const selectMyReport = (r: any) => {
+    setMyReport(r);
+    setMyReportConfirmed(r.speaker_confirmed ?? false);
+    setMyReportFormat(r.presentation_format || "");
+    setMyReportSaved(false);
+  };
+
+  useEffect(() => {
+    if (tab !== "my_report" || !isSpeaker) return;
+    setMyReportLoading(true);
+    if (demoMode) {
+      const demoReps = [
+        { id: "r1", title: "Угрозы безопасности 2026", section_id: "s1", speaker_confirmed: true, presentation_format: "OFFLINE", description: "Обзор актуальных угроз", start_time: "2026-03-19T10:00:00Z" },
+        { id: "r2", title: "ML в продакшне", section_id: "s2", speaker_confirmed: false, presentation_format: "ONLINE", description: "Практические кейсы", start_time: "2026-03-19T14:00:00Z" },
+      ];
+      setMyReports(demoReps);
+      selectMyReport(demoReps[0]);
+      setMyReportComments({
+        r1: [
+          { id: "c1", author_name: "Иван Участников", text: "Будут ли слайды после доклада?", created_at: new Date().toISOString() },
+          { id: "c2", author_name: "Анна Петрова", text: "Планируете ли демо?", created_at: new Date().toISOString() },
+        ],
+        r2: [],
+      });
+      setMyReportFeedback({ r1: { average: 4.2, count: 8 }, r2: { average: 0, count: 0 } });
+      setMyReportLoading(false);
+      return;
+    }
+    (async () => {
+      try {
+        const token = localStorage.getItem("access_token") || "";
+        const reports = await apiFetch<any[]>("GET", "/api/reports/my");
+        const reps = reports || [];
+        setMyReports(reps);
+        if (reps.length) selectMyReport(reps[0]);
+
+        // Load comments + feedback for all reports in parallel
+        const comsMap: Record<string, any[]> = {};
+        const fbMap: Record<string, { average: number; count: number }> = {};
+        await Promise.all(reps.map(async (r: any) => {
+          try {
+            const cr = await fetch(`http://localhost:8000/api/reports/${r.id}/comments`, {
+              headers: { Authorization: `Bearer ${token}` }, cache: "no-store"
+            });
+            comsMap[r.id] = cr.ok ? await cr.json() : [];
+          } catch { comsMap[r.id] = []; }
+          try {
+            const fr = await fetch(`http://localhost:8000/api/reports/${r.id}/feedback`, {
+              headers: { Authorization: `Bearer ${token}` }, cache: "no-store"
+            });
+            if (fr.ok) { const d = await fr.json(); fbMap[r.id] = { average: d.average || 0, count: d.count || 0 }; }
+            else fbMap[r.id] = { average: 0, count: 0 };
+          } catch { fbMap[r.id] = { average: 0, count: 0 }; }
+        }));
+        setMyReportComments(comsMap);
+        setMyReportFeedback(fbMap);
+      } catch {}
+      finally { setMyReportLoading(false); }
+    })();
+  }, [tab, isSpeaker, demoMode]);
+
+  const saveMyReport = async () => {
+    if (!myReport) return;
+    setMyReportSaving(true); setMyReportSaved(false);
+    if (demoMode) {
+      setMyReport((prev: any) => ({ ...prev, speaker_confirmed: myReportConfirmed, presentation_format: myReportFormat }));
+      setMyReportSaving(false); setMyReportSaved(true);
+      setTimeout(() => setMyReportSaved(false), 3000);
+      return;
+    }
+    try {
+      await apiFetch("PATCH", `/api/reports/${myReport.id}`, { speaker_confirmed: myReportConfirmed, presentation_format: myReportFormat || null });
+      setMyReportSaved(true); setTimeout(() => setMyReportSaved(false), 3000);
+    } catch (e: any) { alert(e?.message || "Ошибка"); }
+    finally { setMyReportSaving(false); }
+  };
+
+  const answerMyReportComment = async (commentId: string, reportId: string) => {
+    const text = (myReportAnswerText[commentId] || "").trim();
+    if (!text) return;
+    setMyReportAnswering(commentId);
+    const updateComs = (prev: Record<string, any[]>) => ({
+      ...prev,
+      [reportId]: (prev[reportId] || []).map((c: any) =>
+        c.id === commentId ? { ...c, answer_text: text, answer_by_name: user.full_name } : c
+      )
+    });
+    if (demoMode) {
+      setMyReportComments(updateComs);
+      setMyReportAnswerText(prev => ({ ...prev, [commentId]: "" }));
+      setMyReportAnswering("");
+      return;
+    }
+    try {
+      const saved = await apiFetch<any>("PUT", `/api/comments/${commentId}/answer`, { text });
+      setMyReportComments(prev => ({ ...prev, [reportId]: (prev[reportId] || []).map((c: any) => c.id === commentId ? saved : c) }));
+      setMyReportAnswerText(prev => ({ ...prev, [commentId]: "" }));
+    } catch (e: any) { alert(e?.message || "Ошибка"); }
+    finally { setMyReportAnswering(""); }
+  };
+
   // ═══ ВОПРОСЫ КУРАТОРА ═══
   const [qSections, setQSections] = useState<any[]>([]);
   const [qReports, setQReports] = useState<Record<string, any[]>>({});
@@ -2973,6 +3090,7 @@ function ParticipantDashboard({
   const navItems: { id: string; icon: string; label: string }[] = [
     { id: "program", icon: "📋", label: "Программа" },
     ...(isCurator ? [{ id: "sections", icon: "🗂️", label: "Мои секции" }] : []),
+    ...(isSpeaker ? [{ id: "my_report", icon: "🎤", label: "Мой доклад" }] : []),
     { id: "kanban", icon: "📌", label: "Канбан задач" },
     { id: "schedule", icon: "📅", label: "Моё расписание" },
     ...(isCurator ? [{ id: "questions", icon: "💬", label: "Вопросы" }] : []),
@@ -3231,6 +3349,171 @@ function ParticipantDashboard({
                 )}
               </div>
             )}
+
+                        {/* ═══ МОЙ ДОКЛАД (спикер) ═══ */}
+            {tab === "my_report" && isSpeaker && (
+              <div>
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>🎤 Мой доклад</h1>
+
+                {myReportLoading && <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Загрузка...</div>}
+
+                {!myReportLoading && myReports.length === 0 && (
+                  <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>🎤</div>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>Вам пока не назначен доклад</div>
+                    <div style={{ fontSize: 13, marginTop: 8 }}>Свяжитесь с куратором секции</div>
+                  </div>
+                )}
+
+                {!myReportLoading && myReports.length > 0 && (
+                  <div style={{ display: "grid", gap: 20 }}>
+
+                    {/* ── Переключатель докладов (если несколько) ── */}
+                    {myReports.length > 1 && (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {myReports.map((r: any) => (
+                          <button key={r.id} onClick={() => selectMyReport(r)}
+                            style={{ padding: "8px 18px", borderRadius: 100, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", border: "2px solid", transition: "all 0.15s",
+                              borderColor: myReport?.id === r.id ? "var(--primary)" : "var(--border)",
+                              background: myReport?.id === r.id ? "#e8f0fe" : "white",
+                              color: myReport?.id === r.id ? "var(--primary)" : "#64748b" }}>
+                            {r.title.length > 30 ? r.title.slice(0, 30) + "…" : r.title}
+                            <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{r.speaker_confirmed ? "✅" : "⏳"}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {myReport && (<>
+                    {/* ── Карточка доклада ── */}
+                    <div style={{ background: "white", borderRadius: 16, border: "1.5px solid var(--border)", overflow: "hidden", boxShadow: "0 2px 12px rgba(74,89,138,0.08)" }}>
+                      <div style={{ padding: "20px 24px", background: "linear-gradient(135deg, #f0f7ff 0%, #e8f0fe 100%)", borderBottom: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Ваш доклад</div>
+                        <div style={{ fontWeight: 900, fontSize: 20, color: "var(--primary-dark)", marginBottom: 8 }}>{myReport.title}</div>
+                        {myReport.description && <div style={{ fontSize: 14, color: "#475569" }}>{myReport.description}</div>}
+                        <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+                          {myReport.start_time && (
+                            <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                              🕐 {new Date(myReport.start_time).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                              {myReport.end_time && ` — ${new Date(myReport.end_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`}
+                            </span>
+                          )}
+                          <span style={{ fontSize: 12, padding: "2px 10px", borderRadius: 100, fontWeight: 800, background: myReport.speaker_confirmed ? "#f0fdf4" : "#fffbeb", color: myReport.speaker_confirmed ? "#16a34a" : "#d97706" }}>
+                            {myReport.speaker_confirmed ? "✅ Подтверждён" : "⏳ Ожидает подтверждения"}
+                          </span>
+                          {/* Средняя оценка */}
+                          {myReportFeedback[myReport.id]?.count > 0 && (
+                            <span style={{ fontSize: 13, fontWeight: 800, color: "#f59e0b" }}>
+                              ★ {myReportFeedback[myReport.id].average.toFixed(1)}
+                              <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, marginLeft: 4 }}>
+                                ({myReportFeedback[myReport.id].count} оценок)
+                              </span>
+                            </span>
+                          )}
+                          {myReportFeedback[myReport.id]?.count === 0 && (
+                            <span style={{ fontSize: 12, color: "#94a3b8" }}>Оценок пока нет</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── Форма подтверждения ── */}
+                      <div style={{ padding: "20px 24px" }}>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)", marginBottom: 14 }}>Статус участия</div>
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 8 }}>Вы подтверждаете участие?</label>
+                          <div style={{ display: "flex", gap: 10 }}>
+                            <button onClick={() => setMyReportConfirmed(true)}
+                              style={{ padding: "9px 20px", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", border: "2px solid", borderColor: myReportConfirmed ? "#16a34a" : "var(--border)", background: myReportConfirmed ? "#f0fdf4" : "white", color: myReportConfirmed ? "#16a34a" : "#64748b" }}>
+                              ✅ Подтверждаю
+                            </button>
+                            <button onClick={() => setMyReportConfirmed(false)}
+                              style={{ padding: "9px 20px", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", border: "2px solid", borderColor: !myReportConfirmed ? "#dc2626" : "var(--border)", background: !myReportConfirmed ? "#fef2f2" : "white", color: !myReportConfirmed ? "#dc2626" : "#64748b" }}>
+                              ❌ Не смогу
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: 20 }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 8 }}>Формат участия</label>
+                          <div style={{ display: "flex", gap: 10 }}>
+                            {(["OFFLINE", "ONLINE"] as const).map(fmt => (
+                              <button key={fmt} onClick={() => setMyReportFormat(fmt)}
+                                style={{ padding: "9px 20px", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", border: "2px solid", borderColor: myReportFormat === fmt ? "var(--primary)" : "var(--border)", background: myReportFormat === fmt ? "#e8f0fe" : "white", color: myReportFormat === fmt ? "var(--primary)" : "#64748b" }}>
+                                {fmt === "OFFLINE" ? "🏛 Офлайн" : "💻 Онлайн"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {myReportSaved && (
+                          <div style={{ background: "#f0fdf4", color: "#16a34a", padding: "10px 14px", borderRadius: 8, marginBottom: 12, fontWeight: 700, fontSize: 13 }}>
+                            Изменения сохранены!
+                          </div>
+                        )}
+                        <button onClick={saveMyReport} disabled={myReportSaving}
+                          style={{ padding: "11px 28px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: myReportSaving ? "not-allowed" : "pointer", opacity: myReportSaving ? 0.7 : 1, fontFamily: "Nunito, sans-serif" }}>
+                          {myReportSaving ? "Сохранение..." : "💾 Сохранить"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* ── Вопросы участников ── */}
+                    <div style={{ background: "white", borderRadius: 16, border: "1.5px solid var(--border)", overflow: "hidden", boxShadow: "0 2px 12px rgba(74,89,138,0.08)" }}>
+                      <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", background: "#fafbfc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)" }}>
+                          💬 Вопросы участников
+                          <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 600, color: "#64748b" }}>({(myReportComments[myReport.id] || []).length})</span>
+                          {(myReportComments[myReport.id] || []).filter((c: any) => !c.answer_text).length > 0 && (
+                            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, color: "#dc2626" }}>
+                              · {(myReportComments[myReport.id] || []).filter((c: any) => !c.answer_text).length} без ответа
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ padding: "16px 24px" }}>
+                        {(myReportComments[myReport.id] || []).length === 0 ? (
+                          <div style={{ color: "#94a3b8", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
+                            Вопросов пока нет — они появятся здесь когда участники начнут задавать
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: 14 }}>
+                            {(myReportComments[myReport.id] || []).map((c: any) => (
+                              <div key={c.id} style={{ borderBottom: "1px solid #f1f5f9", paddingBottom: 14 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                                  <span style={{ fontWeight: 700, fontSize: 13, color: "var(--primary-dark)" }}>{c.author_name || "Участник"}</span>
+                                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{new Date(c.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                                </div>
+                                <div style={{ fontSize: 14, color: "#334155", padding: "8px 12px", background: "#f8fafc", borderRadius: 8, marginBottom: 10 }}>{c.text}</div>
+                                {c.answer_text && (
+                                  <div style={{ padding: "10px 14px", background: "#eef6ff", borderRadius: 10, borderLeft: "3px solid var(--primary)", marginBottom: 8 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: "var(--primary)", marginBottom: 4 }}>Ваш ответ</div>
+                                    <div style={{ fontSize: 13, color: "#334155" }}>{c.answer_text}</div>
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <input type="text"
+                                    placeholder={c.answer_text ? "Изменить ответ..." : "Ответить на вопрос..."}
+                                    value={myReportAnswerText[c.id] || ""}
+                                    onChange={e => setMyReportAnswerText(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                    onKeyDown={e => e.key === "Enter" && answerMyReportComment(c.id, myReport.id)}
+                                    style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                                  <button onClick={() => answerMyReportComment(c.id, myReport.id)}
+                                    disabled={myReportAnswering === c.id || !(myReportAnswerText[c.id]||"").trim()}
+                                    style={{ padding: "8px 14px", background: c.answer_text ? "#f59e0b" : "var(--primary)", color: "white", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif", opacity: (myReportAnswering === c.id || !(myReportAnswerText[c.id]||"").trim()) ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                                    {myReportAnswering === c.id ? "..." : c.answer_text ? "Обновить" : "Ответить"}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    </>)}
+
+                  </div>
+                )}
+              </div>
+            )}
+
 
             {/* ═══ TAB: КАНБАН ═══ */}
             {tab === "kanban" && (
