@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import ChatMessage, ChatRoom, EventMembership, User
+from routers.auth import get_current_user, _get_jwt_settings
 
 router = APIRouter()
 
@@ -23,53 +24,6 @@ def _now() -> datetime:
 
 def _new_id() -> str:
     return str(uuid4())
-
-
-def _get_jwt_settings() -> tuple[str, str]:
-    secret_key = os.getenv("SECRET_KEY")
-    algorithm = os.getenv("ALGORITHM")
-    if not secret_key or not algorithm:
-        raise HTTPException(
-            status_code=500,
-            detail="Ошибка конфигурации сервера: не задан SECRET_KEY или ALGORITHM",
-        )
-    return secret_key, algorithm
-
-
-def _extract_bearer_token(authorization: Optional[str]) -> str:
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Отсутствует заголовок Authorization")
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Некорректный формат Authorization (нужен Bearer токен)")
-    token = authorization.removeprefix("Bearer ").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Пустой токен в Authorization")
-    return token
-
-
-def _get_current_user(db: Session, authorization: Optional[str]) -> User:
-    token = _extract_bearer_token(authorization)
-    secret_key, algorithm = _get_jwt_settings()
-    try:
-        payload = jwt.decode(token, secret_key, algorithms=[algorithm])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Недействительный токен")
-
-    user_id = payload.get("sub")
-    if not user_id or not isinstance(user_id, str):
-        raise HTTPException(status_code=401, detail='Недействительный токен: отсутствует поле "sub"')
-
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="Пользователь не найден")
-    return user
-
-
-def get_current_user(
-    db: Session = Depends(get_db),
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-) -> User:
-    return _get_current_user(db=db, authorization=authorization)
 
 
 class DirectChatCreateIn(BaseModel):
