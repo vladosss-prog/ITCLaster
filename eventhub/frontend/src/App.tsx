@@ -172,6 +172,7 @@ const SiteHeader = ({ user, onLogout, demoMode }: { user: User | null; onLogout:
         </Link>
         <nav className="main-nav">
           <Link to="/about">О КЛАСТЕРЕ</Link>
+          <Link to="/members">УЧАСТНИКИ</Link>
           <Link to="/events">МЕРОПРИЯТИЯ</Link>
           <Link to="/news">НОВОСТИ</Link>
           <Link to="/contacts">КОНТАКТЫ</Link>
@@ -365,6 +366,121 @@ const KanbanView = ({
 };
 
 // -----------------------------------------------------------
+// НАСТРОЙКИ ПРОФИЛЯ (редактируемые)
+// -----------------------------------------------------------
+const SettingsTab = ({
+  user, setUser, demoMode,
+}: {
+  user: User;
+  setUser: (u: User) => void;
+  demoMode: boolean;
+}) => {
+  const [fullName, setFullName] = useState(user.full_name);
+  const [bio, setBio] = useState(user.bio || "");
+  const [organization, setOrganization] = useState(user.organization || "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSave = async () => {
+    if (!fullName.trim()) { setError("Имя не может быть пустым"); return; }
+    setSaving(true); setError(""); setSaved(false);
+
+    if (demoMode) {
+      setUser({ ...user, full_name: fullName.trim(), bio: bio || undefined, organization: organization || undefined });
+      setSaving(false); setSaved(true);
+      return;
+    }
+
+    try {
+      const res = await authAPI.updateProfile({
+        full_name: fullName.trim(),
+        bio: bio || undefined,
+        organization: organization || undefined,
+      });
+      setUser(res.data);
+      setSaved(true);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || "Не удалось сохранить");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "10px 14px", borderRadius: 8,
+    border: "1.5px solid var(--border, #e2e8f0)", fontSize: 14,
+    fontFamily: "Nunito, sans-serif", outline: "none", boxSizing: "border-box",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12, fontWeight: 800, color: "#777",
+    textTransform: "uppercase", display: "block", marginBottom: 6,
+  };
+
+  return (
+    <div>
+      <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Настройки профиля</h2>
+      <div style={{ background: "white", borderRadius: 16, padding: 32, maxWidth: 480, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+        {demoMode && (
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 13, fontWeight: 600, color: "#92400e" }}>
+            Demo — изменения не сохраняются в БД
+          </div>
+        )}
+        {error && (
+          <div style={{ background: "#fef2f2", color: "#dc2626", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 14, fontWeight: 600 }}>
+            {error}
+          </div>
+        )}
+        {saved && (
+          <div style={{ background: "#f0fdf4", color: "#16a34a", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 14, fontWeight: 600 }}>
+            Сохранено успешно
+          </div>
+        )}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Email</label>
+          <div style={{ ...inputStyle, background: "#f8fafc", color: "#64748b" }}>{user.email}</div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Роль</label>
+          <div style={{ ...inputStyle, background: "#f8fafc", color: "#64748b" }}>{user.global_role}</div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Имя *</label>
+          <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Организация</label>
+          <input type="text" value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Название организации" style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: 24 }}>
+          <label style={labelStyle}>О себе (bio)</label>
+          <textarea
+            value={bio}
+            onChange={e => setBio(e.target.value)}
+            placeholder="Краткое описание"
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            width: "100%", padding: "12px", background: "var(--primary)", color: "white",
+            border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14,
+            cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
+            fontFamily: "Nunito, sans-serif",
+          }}
+        >
+          {saving ? "Сохранение..." : "СОХРАНИТЬ"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------
 // ЛЕНДИНГ
 // -----------------------------------------------------------
 const LandingPage = ({ demoMode }: { demoMode: boolean }) => {
@@ -429,36 +545,78 @@ const LandingPage = ({ demoMode }: { demoMode: boolean }) => {
 // -----------------------------------------------------------
 // СПИСОК МЕРОПРИЯТИЙ
 // -----------------------------------------------------------
+const EVENTS_PAGE_SIZE = 6;
+
 const EventsPage = ({ demoMode }: { demoMode: boolean }) => {
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    if (demoMode) { setEvents(DEMO_EVENTS); setLoading(false); return; }
-    eventsAPI.getPublic()
-      .then(res => setEvents(res.data as EventItem[]))
+    if (demoMode) { setEvents(DEMO_EVENTS); setLoading(false); setHasMore(false); return; }
+    setLoading(true);
+    eventsAPI.getPublic(0, EVENTS_PAGE_SIZE)
+      .then(res => {
+        const data = res.data as EventItem[];
+        setEvents(data);
+        setSkip(data.length);
+        setHasMore(data.length === EVENTS_PAGE_SIZE);
+      })
       .catch(() => setEvents([]))
       .finally(() => setLoading(false));
   }, [demoMode]);
+
+  const loadMore = () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    eventsAPI.getPublic(skip, EVENTS_PAGE_SIZE)
+      .then(res => {
+        const data = res.data as EventItem[];
+        setEvents(prev => [...prev, ...data]);
+        setSkip(prev => prev + data.length);
+        setHasMore(data.length === EVENTS_PAGE_SIZE);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  };
 
   return (
     <div style={{ padding: "40px 0" }}>
       <div className="container">
         <h1 style={{ fontWeight: 800, marginBottom: 32 }}>Мероприятия</h1>
         {loading ? <LoadingScreen /> : (
-          <div className="row g-3">
-            {events.map(e => (
-              <div key={e.id} className="col-lg-4 col-md-6">
-                <div className="event-card-compact" style={{ cursor: "pointer" }} onClick={() => navigate(`/events/${e.id}`)}>
-                  <div className="date-badge">{e.start_date} — {e.end_date}</div>
-                  <h5 className="event-title">{e.title}</h5>
-                  <div className="event-info">{e.description}</div>
-                  <div style={{ marginTop: 12, color: "var(--primary)", fontSize: 13, fontWeight: 700 }}>Подробнее →</div>
+          <>
+            <div className="row g-3">
+              {events.map(e => (
+                <div key={e.id} className="col-lg-4 col-md-6">
+                  <div className="event-card-compact" style={{ cursor: "pointer" }} onClick={() => navigate(`/events/${e.id}`)}>
+                    <div className="date-badge">{e.start_date} — {e.end_date}</div>
+                    <h5 className="event-title">{e.title}</h5>
+                    <div className="event-info">{e.description}</div>
+                    <div style={{ marginTop: 12, color: "var(--primary)", fontSize: 13, fontWeight: 700 }}>Подробнее →</div>
+                  </div>
                 </div>
+              ))}
+            </div>
+            {hasMore && (
+              <div style={{ textAlign: "center", marginTop: 32 }}>
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  style={{
+                    padding: "12px 36px", background: "var(--primary)", color: "white",
+                    border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14,
+                    cursor: loadingMore ? "not-allowed" : "pointer", opacity: loadingMore ? 0.7 : 1,
+                  }}
+                >
+                  {loadingMore ? "Загрузка..." : "Показать ещё"}
+                </button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -729,7 +887,7 @@ const AuthPage = ({ onLogin }: { onLogin: (u: User, demo: boolean) => void }) =>
 // -----------------------------------------------------------
 // ДАШБОРД УЧАСТНИКА
 // -----------------------------------------------------------
-const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout: () => void; demoMode: boolean }) => {
+const ParticipantDashboard = ({ user, setUser, onLogout, demoMode }: { user: User; setUser: (u: User) => void; onLogout: () => void; demoMode: boolean }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
   const [activeTab, setActiveTab] = useState<"calendar" | "schedule" | "myReport" | "messenger" | "kanban" | "settings">("calendar");
@@ -835,18 +993,7 @@ const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogo
             {activeTab === "myReport" && <MyReportTab user={user} demoMode={demoMode} />}
             {activeTab === "messenger" && <Messenger demoMode={demoMode} myUserId={user.id} />}
             {activeTab === "settings" && (
-              <div>
-                <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Настройки профиля</h2>
-                <div style={{ background: "white", borderRadius: 16, padding: 32, maxWidth: 480, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
-                  {[{ label: "Имя", value: user.full_name }, { label: "Email", value: user.email }, { label: "Роль", value: user.global_role }, ...(user.organization ? [{ label: "Организация", value: user.organization }] : [])].map(field => (
-                    <div key={field.label} style={{ marginBottom: 16 }}>
-                      <label style={{ fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{field.label}</label>
-                      <div style={{ padding: "10px 14px", background: "#f8fafc", borderRadius: 8 }}>{field.value}</div>
-                    </div>
-                  ))}
-                  {demoMode && <p style={{ color: "#f59e0b", fontSize: 13, fontWeight: 600 }}>⚠️ Demo — изменения не сохраняются</p>}
-                </div>
-              </div>
+              <SettingsTab user={user} setUser={setUser} demoMode={demoMode} />
             )}
           </>
         )}
@@ -858,7 +1005,7 @@ const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogo
 // -----------------------------------------------------------
 // ДАШБОРД ОРГАНИЗАТОРА
 // -----------------------------------------------------------
-const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout: () => void; demoMode: boolean }) => {
+const OrganizerDashboard = ({ user, setUser, onLogout, demoMode }: { user: User; setUser: (u: User) => void; onLogout: () => void; demoMode: boolean }) => {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -1025,18 +1172,7 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
 
             {/* НАСТРОЙКИ */}
             {activeTab === "settings" && (
-              <div>
-                <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Настройки профиля</h2>
-                <div style={{ background: "white", borderRadius: 16, padding: 32, maxWidth: 480, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
-                  {[{ label: "Имя", value: user.full_name }, { label: "Email", value: user.email }, { label: "Роль", value: user.global_role }, ...(user.organization ? [{ label: "Организация", value: user.organization }] : [])].map(field => (
-                    <div key={field.label} style={{ marginBottom: 16 }}>
-                      <label style={{ fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{field.label}</label>
-                      <div style={{ padding: "10px 14px", background: "#f8fafc", borderRadius: 8 }}>{field.value}</div>
-                    </div>
-                  ))}
-                  {demoMode && <p style={{ color: "#f59e0b", fontSize: 13, fontWeight: 600 }}>⚠️ Demo — изменения не сохраняются</p>}
-                </div>
-              </div>
+              <SettingsTab user={user} setUser={setUser} demoMode={demoMode} />
             )}
           </>
         )}
@@ -1130,6 +1266,182 @@ const CreateEventModal = ({
 };
 
 // -----------------------------------------------------------
+// О КЛАСТЕРЕ
+// -----------------------------------------------------------
+const AboutPage = () => (
+  <div style={{ padding: "60px 0" }}>
+    <div className="container" style={{ maxWidth: 800 }}>
+      <h1 style={{ fontWeight: 900, marginBottom: 32 }}>ИТ-Кластер Сибири</h1>
+      <div style={{ background: "white", borderRadius: 16, padding: 40, boxShadow: "0 4px 20px rgba(0,0,0,0.06)", lineHeight: 1.8 }}>
+        <h2 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>О нас</h2>
+        <p style={{ color: "#334155", fontSize: 16, marginBottom: 20 }}>
+          Ассоциация «ИТ-Кластер Сибири» — некоммерческое объединение ведущих технологических компаний,
+          университетов и инновационных предприятий Западной Сибири. Основана в 2019 году с целью координации
+          развития цифровой экономики региона и формирования устойчивой ИТ-экосистемы.
+        </p>
+        <h2 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Миссия</h2>
+        <p style={{ color: "#334155", fontSize: 16, marginBottom: 20 }}>
+          Содействие развитию ИТ-отрасли Сибири путём объединения усилий бизнеса, науки и государства.
+          Мы создаём среду для обмена знаниями, реализации совместных проектов и подготовки кадров,
+          необходимых цифровой трансформации региональной экономики.
+        </p>
+        <h2 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Цели</h2>
+        <ul style={{ color: "#334155", fontSize: 16, paddingLeft: 24 }}>
+          <li style={{ marginBottom: 10 }}>Организация крупных ИТ-мероприятий: форумов, хакатонов, конференций</li>
+          <li style={{ marginBottom: 10 }}>Поддержка стартапов и молодых специалистов через менторские программы</li>
+          <li style={{ marginBottom: 10 }}>Развитие сотрудничества между университетами и технологическим бизнесом</li>
+          <li style={{ marginBottom: 10 }}>Продвижение Омска как центра цифрового развития Западной Сибири</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+);
+
+// -----------------------------------------------------------
+// НОВОСТИ
+// -----------------------------------------------------------
+const DEMO_NEWS = [
+  { id: "n1", title: "ИТ-Форум 2026 открыл регистрацию участников", date: "2026-03-01", preview: "Ежегодный форум соберёт более 500 специалистов из ведущих технологических компаний Сибири." },
+  { id: "n2", title: "Хакатон EventHub завершился победой команды DevMasters", date: "2026-02-20", preview: "В 48-часовом марафоне приняли участие 24 команды. Победители разработали систему автоматической верстки расписания." },
+  { id: "n3", title: "Подписано соглашение с ОмГТУ о подготовке кадров", date: "2026-02-10", preview: "ИТ-Кластер Сибири и Омский государственный технический университет закрепили партнёрство в сфере образования." },
+  { id: "n4", title: "Открытие нового коворкинга «Точка кипения ОмГТУ»", date: "2026-01-25", preview: "Новое пространство вместит 120 рабочих мест и три переговорные комнаты, оснащённые современным оборудованием." },
+  { id: "n5", title: "Робофест Омск 2026: приём заявок начат", date: "2026-01-15", preview: "Городской чемпионат по робототехнике ждёт участников среди школьников 5–11 классов и студентов колледжей." },
+  { id: "n6", title: "Итоги года: ИТ-Кластер Сибири в цифрах", date: "2026-01-05", preview: "Более 2000 участников, 15 мероприятий, 40 партнёров — подводим итоги насыщенного 2025 года." },
+  { id: "n7", title: "Новый грант на развитие образовательных программ", date: "2025-12-20", preview: "Получен грант Фонда содействия инновациям на разработку онлайн-курсов по направлению «Облачные технологии»." },
+];
+
+const NEWS_PAGE_SIZE = 3;
+
+const NewsPage = () => {
+  const [visible, setVisible] = useState(NEWS_PAGE_SIZE);
+
+  return (
+    <div style={{ padding: "60px 0" }}>
+      <div className="container">
+        <h1 style={{ fontWeight: 900, marginBottom: 32 }}>Новости</h1>
+        <div className="row g-3">
+          {DEMO_NEWS.slice(0, visible).map(news => (
+            <div key={news.id} className="col-lg-4 col-md-6">
+              <div style={{
+                background: "white", borderRadius: 16, padding: 24,
+                boxShadow: "0 4px 20px rgba(0,0,0,0.06)", height: "100%",
+                display: "flex", flexDirection: "column",
+              }}>
+                <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 10 }}>{news.date}</div>
+                <h5 style={{ fontWeight: 800, marginBottom: 12, color: "var(--primary-dark)", lineHeight: 1.4 }}>{news.title}</h5>
+                <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, flex: 1 }}>{news.preview}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        {visible < DEMO_NEWS.length && (
+          <div style={{ textAlign: "center", marginTop: 32 }}>
+            <button
+              onClick={() => setVisible(v => v + NEWS_PAGE_SIZE)}
+              style={{
+                padding: "12px 36px", background: "var(--primary)", color: "white",
+                border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer",
+              }}
+            >
+              Показать ещё
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------
+// УЧАСТНИКИ КЛАСТЕРА
+// -----------------------------------------------------------
+const DEMO_MEMBERS = [
+  { id: "m1", name: "ОмГТУ", description: "Омский государственный технический университет — ведущий технический вуз региона, кузница ИТ-кадров Сибири." },
+  { id: "m2", name: "СКБ Контур", description: "Один из крупнейших разработчиков бухгалтерского и правового ПО в России, имеет офис в Омске." },
+  { id: "m3", name: "Sber Technologies Omsk", description: "Омский центр разработки Сбера — более 300 инженеров, занимаются мобильными и облачными продуктами." },
+  { id: "m4", name: "IT52", description: "Омская студия веб-разработки и цифрового маркетинга, реализовала более 200 проектов для B2B-сектора." },
+  { id: "m5", name: "Точка кипения ОмГТУ", description: "Коворкинг и акселератор инноваций, площадка для стартапов, воркшопов и хакатонов." },
+  { id: "m6", name: "Omsk DataLab", description: "Аналитическая компания, специализирующаяся на machine learning и анализе больших данных для промышленности." },
+];
+
+const MembersPage = () => (
+  <div style={{ padding: "60px 0" }}>
+    <div className="container">
+      <h1 style={{ fontWeight: 900, marginBottom: 12 }}>Участники кластера</h1>
+      <p style={{ color: "#64748b", fontSize: 16, marginBottom: 40 }}>
+        Ведущие компании, университеты и организации Омска и Западной Сибири.
+      </p>
+      <div className="row g-3">
+        {DEMO_MEMBERS.map(m => (
+          <div key={m.id} className="col-lg-4 col-md-6">
+            <div style={{
+              background: "white", borderRadius: 16, padding: 24,
+              boxShadow: "0 4px 20px rgba(0,0,0,0.06)", height: "100%",
+              borderTop: "4px solid var(--primary)",
+            }}>
+              <h5 style={{ fontWeight: 900, marginBottom: 10, color: "var(--primary-dark)" }}>{m.name}</h5>
+              <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, margin: 0 }}>{m.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+// -----------------------------------------------------------
+// КОНТАКТЫ
+// -----------------------------------------------------------
+const ContactsPage = () => (
+  <div style={{ padding: "60px 0" }}>
+    <div className="container" style={{ maxWidth: 700 }}>
+      <h1 style={{ fontWeight: 900, marginBottom: 32 }}>Контакты</h1>
+      <div style={{ background: "white", borderRadius: 16, padding: 40, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+        <div style={{ marginBottom: 28 }}>
+          <h3 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Адрес</h3>
+          <p style={{ color: "#334155", fontSize: 16, lineHeight: 1.7 }}>
+            644050, Омск, пр. Мира, 11<br />
+            Точка кипения ОмГТУ, офис 312
+          </p>
+        </div>
+        <div style={{ marginBottom: 28 }}>
+          <h3 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Связь</h3>
+          <p style={{ color: "#334155", fontSize: 16, marginBottom: 8 }}>
+            Email: <a href="mailto:info@itcluster55.ru" style={{ color: "var(--primary)", fontWeight: 700 }}>info@itcluster55.ru</a>
+          </p>
+          <p style={{ color: "#334155", fontSize: 16 }}>
+            Телефон: <a href="tel:+73812000000" style={{ color: "var(--primary)", fontWeight: 700 }}>+7 (3812) 00-00-00</a>
+          </p>
+        </div>
+        <div>
+          <h3 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Соцсети</h3>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {[
+              { label: "ВКонтакте", href: "#" },
+              { label: "Telegram", href: "#" },
+              { label: "GitHub", href: "#" },
+            ].map(s => (
+              <a
+                key={s.label}
+                href={s.href}
+                style={{
+                  display: "inline-block", padding: "8px 20px",
+                  background: "var(--bg-light, #f1f5f9)", color: "var(--primary)",
+                  borderRadius: 100, fontWeight: 800, fontSize: 14,
+                  textDecoration: "none", border: "1.5px solid var(--border, #e2e8f0)",
+                }}
+              >
+                {s.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// -----------------------------------------------------------
 // ГЛАВНЫЙ КОМПОНЕНТ
 // -----------------------------------------------------------
 export default function App() {
@@ -1159,9 +1471,10 @@ export default function App() {
         <div className="main-viewport" style={{ minHeight: "80vh", paddingTop: demoMode ? "142px" : "100px" }}>
           <Routes>
             <Route path="/" element={<LandingPage demoMode={demoMode} />} />
-            <Route path="/about" element={<PlaceholderPage title="О кластере" icon="🏢" />} />
-            <Route path="/news" element={<PlaceholderPage title="Новости" icon="📰" />} />
-            <Route path="/contacts" element={<PlaceholderPage title="Контакты" icon="📞" />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/members" element={<MembersPage />} />
+            <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/events" element={<EventsPage demoMode={demoMode} />} />
             <Route path="/events/:id" element={<EventPage user={user} demoMode={demoMode} />} />
             <Route path="/reports/:id" element={<ReportPage demoMode={demoMode} />} />
@@ -1171,8 +1484,8 @@ export default function App() {
             <Route path="/dashboard" element={
               user
                 ? user.global_role === "ORGANIZER"
-                  ? <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
-                  : <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
+                  ? <OrganizerDashboard user={user} setUser={setUser} onLogout={handleLogout} demoMode={demoMode} />
+                  : <ParticipantDashboard user={user} setUser={setUser} onLogout={handleLogout} demoMode={demoMode} />
                 : <Navigate to="/login" />
             } />
             <Route path="/manage/events/:id" element={

@@ -163,6 +163,29 @@ def me(current_user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(current_user, from_attributes=True)
 
 
+class UserUpdateIn(BaseModel):
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    organization: Optional[str] = None
+    photo_url: Optional[str] = None
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    body: UserUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """Редактирование профиля текущего пользователя."""
+    data = body.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(current_user, field, value)
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user, from_attributes=True)
+
+
 class PromoteIn(BaseModel):
     user_id: str
     role: str = Field(..., pattern="^(ORGANIZER|PARTICIPANT)$")

@@ -6,11 +6,24 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import delete as sa_delete, or_, select
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Event, EventMembership, Report, Section, User
+from models import (
+    ChatMessage,
+    ChatRoom,
+    Event,
+    EventMembership,
+    Report,
+    ReportComment,
+    ReportFeedback,
+    Section,
+    SectionReport,
+    Task,
+    User,
+    UserReportSchedule,
+)
 from routers.auth import get_current_user, get_current_user_optional
 from routers.chat import add_user_to_event_chat
 
@@ -259,6 +272,18 @@ def get_event(
     if event.owner_id != current_user.id and not has_membership:
         raise HTTPException(status_code=403, detail="Нет доступа к мероприятию")
 
+    return EventOut.model_validate(event, from_attributes=True)
+
+
+@router.get("/{event_id}/public", response_model=EventOut)
+def get_event_public(
+    event_id: str,
+    db: Session = Depends(get_db),
+) -> EventOut:
+    """Публичная страница мероприятия (без авторизации). Только PUBLISHED."""
+    event = db.get(Event, event_id)
+    if not event or event.status != "PUBLISHED":
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     return EventOut.model_validate(event, from_attributes=True)
 
 
@@ -525,16 +550,51 @@ def delete_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
-    """Удалить мероприятие (только владелец). Каскадно удаляет membership."""
+    """Удалить мероприятие (только владелец). Каскадно удаляет все связанные данные."""
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
     if event.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Только владелец может удалить мероприятие")
 
-    # Удаляем связанные memberships
-    from sqlalchemy import delete as sa_delete
-    db.execute(sa_delete(EventMembership).where(EventMembership.event_id == event_id))
+    # 1. Задачи мероприятия
+    db.execute(sa_delete(Task).where(Task.event_id == event_id))
+
+    # 2. Секции и их содержимое
+    section_ids_stmt = select(Section.id).where(Section.event_id == event_id)
+    section_ids = list(db.execute(section_ids_stmt).scalars().all())
+
+    if section_ids:
+        # 2a. Доклады секций
+        report_ids_stmt = select(Report.id).where(Report.section_id.in_(section_ids))
+        report_ids = list(db.execute(report_ids_stmt).scalars().all())
+
+        if report_ids:
+            db.execute(sa_delete(ReportComment).where(ReportComment.report_id.in_(report_ids)))
+            db.execute(sa_delete(ReportFeedback).where(ReportFeedback.report_id.in_(report_ids)))
+            db.execute(sa_delete(UserReportSchedule).where(UserReportSchedule.report_id.in_(report_ids)))
+            # Сбрасываем report_id в memberships
+            db.execute(
+                sa_delete(EventMembership).where(
+                    EventMembership.event_id == event_id
+                )
+            )
+            db.execute(sa_delete(Report).where(Report.section_id.in_(section_ids)))
+        else:
+            db.execute(sa_delete(EventMembership).where(EventMembership.event_id == event_id))
+
+        db.execute(sa_delete(SectionReport).where(SectionReport.section_id.in_(section_ids)))
+        db.execute(sa_delete(Section).where(Section.event_id == event_id))
+    else:
+        db.execute(sa_delete(EventMembership).where(EventMembership.event_id == event_id))
+
+    # 3. Чат-комнаты мероприятия
+    room_ids_stmt = select(ChatRoom.id).where(ChatRoom.event_id == event_id)
+    room_ids = list(db.execute(room_ids_stmt).scalars().all())
+    if room_ids:
+        db.execute(sa_delete(ChatMessage).where(ChatMessage.room_id.in_(room_ids)))
+        db.execute(sa_delete(ChatRoom).where(ChatRoom.event_id == event_id))
+
     db.delete(event)
     db.commit()
     return None

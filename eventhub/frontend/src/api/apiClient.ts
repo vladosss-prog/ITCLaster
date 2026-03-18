@@ -212,6 +212,10 @@ export const authAPI = {
   // GET /api/auth/me
   me: () => api.get<User>("/api/auth/me"),
 
+  // PATCH /api/auth/me
+  updateProfile: (data: { full_name?: string; bio?: string; organization?: string; photo_url?: string }) =>
+    api.patch<User>("/api/auth/me", data),
+
   // POST /api/auth/register-organizer
   registerOrganizer: (data: { email: string; password: string; full_name: string }) =>
     api.post<User>("/api/auth/register-organizer", data),
@@ -232,11 +236,15 @@ export const eventsAPI = {
     api.get<EventData[]>("/api/events/"),
 
   // Публичный список (без JWT)
-  getPublic: () =>
-    api.get<EventData[]>("/api/events/public"),
+  getPublic: (skip = 0, limit = 20) =>
+    api.get<EventData[]>("/api/events/public", { params: { skip, limit } }),
 
   getOne: (id: string) =>
     api.get<EventData>(`/api/events/${id}`),
+
+  // GET /api/events/{id}/public (без JWT)
+  getOnePublic: (id: string) =>
+    api.get<EventData>(`/api/events/${id}/public`),
 
   // PATCH /api/events/{id}
   update: (id: string, data: Partial<EventData>) =>

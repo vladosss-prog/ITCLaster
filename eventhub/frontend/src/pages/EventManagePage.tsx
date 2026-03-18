@@ -575,8 +575,7 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
     }
 
     try {
-      // DELETE /api/events/{id} — когда бэк добавит эндпоинт
-      // await eventsAPI.delete(id);
+      await eventsAPI.delete(id);
       navigate("/dashboard");
     } catch (e: any) {
       alert(e?.response?.data?.detail || "Не удалось удалить мероприятие");
