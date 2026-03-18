@@ -29,7 +29,7 @@ import {
   usersAPI,
 } from "./api/apiClient";
 
-import { CuratorDashboard } from "./components/dashboard/CuratorDashboard";
+// CuratorDashboard moved into unified ParticipantDashboard
 import { CreateEventPage } from "./pages/CreateEventPage";
 import { ReportPage } from "./pages/ReportPage";
 import { EventManagePage } from "./pages/EventManagePage";
@@ -796,9 +796,52 @@ const DEMO_USERS: Record<string, DemoUser> = {
     password: "curator",
     full_name: "Куратор Секционов",
     global_role: "PARTICIPANT" as GlobalRole,
-    organization: "CURATOR_DEMO",
+    organization: "ОмГТУ",
+  },
+  "speaker@it.ru": {
+    id: "u4",
+    email: "speaker@it.ru",
+    password: "speaker",
+    full_name: "Алексей Спикеров",
+    global_role: "PARTICIPANT" as GlobalRole,
+    organization: "ОмГТУ",
   },
 };
+
+// Контекстные роли — кто какую роль имеет в каком мероприятии
+interface DemoMembership {
+  user_id: string;
+  event_id: string;
+  context_role: "CURATOR" | "SPEAKER" | "PARTICIPANT";
+  section_id?: string;
+  report_id?: string;
+}
+
+const DEMO_MEMBERSHIPS: DemoMembership[] = [
+  { user_id: "u3", event_id: "e1", context_role: "CURATOR", section_id: "s1" },
+  { user_id: "u3", event_id: "e2", context_role: "CURATOR", section_id: "s3" },
+  { user_id: "u4", event_id: "e1", context_role: "SPEAKER", section_id: "s1", report_id: "r1" },
+  { user_id: "u2", event_id: "e1", context_role: "PARTICIPANT" },
+  { user_id: "u2", event_id: "e2", context_role: "PARTICIPANT" },
+];
+
+// Определить лучшую роль пользователя по всем мероприятиям
+function getBestDemoRole(userId: string): "ORGANIZER" | "CURATOR" | "SPEAKER" | "PARTICIPANT" {
+  const user = Object.values(DEMO_USERS).find((u) => u.id === userId);
+  if (user?.global_role === "ORGANIZER") return "ORGANIZER";
+  const memberships = DEMO_MEMBERSHIPS.filter((m) => m.user_id === userId);
+  if (memberships.some((m) => m.context_role === "CURATOR")) return "CURATOR";
+  if (memberships.some((m) => m.context_role === "SPEAKER")) return "SPEAKER";
+  return "PARTICIPANT";
+}
+
+// Получить все пользователей для назначения
+const DEMO_ALL_USERS: User[] = [
+  { id: "u1", email: "org@it.ru", full_name: "Организатор Иванов", global_role: "ORGANIZER", organization: "ИТ-Кластер Сибири" },
+  { id: "u2", email: "user@it.ru", full_name: "Иван Участников", global_role: "PARTICIPANT", organization: "ОмГТУ" },
+  { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "PARTICIPANT", organization: "ОмГТУ" },
+  { id: "u4", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "PARTICIPANT", organization: "ОмГТУ" },
+];
 
 const DEMO_EVENTS: EventData[] = [
   {
@@ -912,6 +955,36 @@ const DEMO_TASKS: Task[] = [
     created_by: "u1",
     status: "IN_PROGRESS",
     due_date: "2026-03-19",
+  },
+  {
+    id: "t9",
+    event_id: "e1",
+    title: "Собрать bio и фото спикеров секции ИнфоБез",
+    assigned_to: "u3",
+    assigned_to_name: "Куратор Секционов",
+    created_by: "u1",
+    status: "TODO",
+    due_date: "2026-03-18",
+  },
+  {
+    id: "t10",
+    event_id: "e1",
+    title: "Подготовить слайды к докладу",
+    assigned_to: "u4",
+    assigned_to_name: "Алексей Спикеров",
+    created_by: "u3",
+    status: "TODO",
+    due_date: "2026-03-19",
+  },
+  {
+    id: "t11",
+    event_id: "e1",
+    title: "Тестовый прогон доклада",
+    assigned_to: "u4",
+    assigned_to_name: "Алексей Спикеров",
+    created_by: "u3",
+    status: "IN_PROGRESS",
+    due_date: "2026-03-18",
   },
 ];
 
@@ -1300,8 +1373,9 @@ function AuthPage({ onLogin, onRegister, loading, error }: {
           <div style={{ display: "flex", gap: 8 }}>
             {[
               { email: "org@it.ru", pass: "org", label: "👔 Организатор", bg: "var(--primary)" },
-              { email: "user@it.ru", pass: "user", label: "🙋 Участник", bg: "#16a34a" },
               { email: "curator@it.ru", pass: "curator", label: "📋 Куратор", bg: "#6b7280" },
+              { email: "speaker@it.ru", pass: "speaker", label: "🎤 Спикер", bg: "#d97706" },
+              { email: "user@it.ru", pass: "user", label: "🙋 Участник", bg: "#16a34a" },
             ].map((d) => (
               <button
                 key={d.email}
@@ -1957,6 +2031,25 @@ function OrganizerDashboard({
 
   const [newTitle, setNewTitle] = useState("");
   const [newDue, setNewDue] = useState("");
+  const [newAssignee, setNewAssignee] = useState("");
+
+  // --- Публикация мероприятия ---
+  const publishEvent = async (eid: string) => {
+    setEvents((prev) => prev.map((e) => e.id === eid ? { ...e, status: "PUBLISHED" } : e));
+    if (!demoMode) try { await apiFetch("PATCH", `/api/events/${eid}`, { status: "PUBLISHED" }); } catch {}
+  };
+
+  // --- Назначить куратора секции ---
+  const [showAssignCurator, setShowAssignCurator] = useState("");
+  const [curatorSearch, setCuratorSearch] = useState("");
+  const assignCurator = (userId: string, eventId: string) => {
+    const u = DEMO_ALL_USERS.find((u) => u.id === userId);
+    if (!u) return;
+    // Добавляем membership
+    DEMO_MEMBERSHIPS.push({ user_id: userId, event_id: eventId, context_role: "CURATOR" });
+    setShowAssignCurator("");
+    setCuratorSearch("");
+  };
 
   // --- Загрузка данных ---
   useEffect(() => {
@@ -2004,12 +2097,13 @@ function OrganizerDashboard({
   // --- FIX #2: добавление задачи ПРИВЯЗЫВАЕТСЯ к selEv ---
   const addTask = async () => {
     if (!newTitle.trim() || !selEv) return;
+    const assignee = DEMO_ALL_USERS.find((u) => u.id === newAssignee) || { id: user.id, full_name: user.full_name };
     const newTask: Task = {
       id: `t-${Date.now()}`,
       event_id: selEv,
       title: newTitle.trim(),
-      assigned_to: user.id,
-      assigned_to_name: user.full_name,
+      assigned_to: assignee.id,
+      assigned_to_name: assignee.full_name,
       created_by: user.id,
       status: "TODO",
       due_date: newDue || null,
@@ -2021,6 +2115,7 @@ function OrganizerDashboard({
         const res = await apiFetch<Task>("POST", "/api/tasks/", {
           event_id: selEv,
           title: newTitle.trim(),
+          assigned_to: assignee.id,
           due_date: newDue || undefined,
         });
         setTasks((prev) => [...prev, res]);
@@ -2030,6 +2125,7 @@ function OrganizerDashboard({
     }
     setNewTitle("");
     setNewDue("");
+    setNewAssignee("");
   };
 
   const delTask = async (id: string) => {
@@ -2146,6 +2242,36 @@ function OrganizerDashboard({
                                 {ev.status === "PUBLISHED" ? "Опубликовано" : "Черновик"}
                               </span>
                             </div>
+                            {ev.status === "DRAFT" && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); publishEvent(ev.id); }}
+                                style={{ marginTop: 8, padding: "6px 16px", background: "#16a34a", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                              >
+                                🚀 Опубликовать
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setShowAssignCurator(showAssignCurator === ev.id ? "" : ev.id); }}
+                              style={{ marginTop: 4, padding: "5px 14px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                            >
+                              📋 Назначить куратора
+                            </button>
+                            {showAssignCurator === ev.id && (
+                              <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
+                                <input
+                                  type="text" placeholder="Поиск по ФИО..."
+                                  value={curatorSearch} onChange={(e) => setCuratorSearch(e.target.value)}
+                                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }}
+                                />
+                                {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(curatorSearch.toLowerCase())).map((u) => (
+                                  <div key={u.id} onClick={() => assignCurator(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                                    onMouseOver={(e) => e.currentTarget.style.background = "#e8f0fe"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
+                                    <span>{u.full_name}</span>
+                                    <span style={{ color: "var(--primary)", fontSize: 11 }}>Назначить</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           <div style={{ textAlign: "center", minWidth: 70, flexShrink: 0 }}>
                             <div style={{ fontSize: 28, fontWeight: 900, color: p >= 75 ? "#16a34a" : p >= 40 ? "#d97706" : "var(--primary)" }}>{p}%</div>
@@ -2190,6 +2316,10 @@ function OrganizerDashboard({
                 {/* Добавить задачу */}
                 <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
                   <input type="text" placeholder="Новая задача..." value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()} style={{ flex: 2, minWidth: 180, padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                  <select value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none", minWidth: 160 }}>
+                    <option value="">Назначить на...</option>
+                    {DEMO_ALL_USERS.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </select>
                   <input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
                   <button onClick={addTask} style={{ padding: "10px 22px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", whiteSpace: "nowrap" }}>+ Добавить</button>
                 </div>
@@ -2259,7 +2389,7 @@ function OrganizerDashboard({
                     { l: "Имя", v: user.full_name },
                     { l: "Email", v: user.email },
                     { l: "Роль", v: user.global_role },
-                    ...(user.organization && user.organization !== "CURATOR_DEMO" ? [{ l: "Организация", v: user.organization }] : []),
+                    ...(user.organization ? [{ l: "Организация", v: user.organization }] : []),
                   ].map((f) => (
                     <div key={f.l} style={{ marginBottom: 14 }}>
                       <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>{f.l}</div>
@@ -2279,7 +2409,9 @@ function OrganizerDashboard({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 5. PARTICIPANT DASHBOARD
+// 5. UNIFIED DASHBOARD — участник / куратор / спикер
+//    Все неорганизаторы попадают сюда. Роль определяется по memberships.
+//    Канбан доступен ВСЕМ.
 // ═══════════════════════════════════════════════════════════════
 function ParticipantDashboard({
   user,
@@ -2290,23 +2422,54 @@ function ParticipantDashboard({
   onLogout: () => void;
   demoMode: boolean;
 }) {
-  const [tab, setTab] = useState<"program" | "schedule" | "chat" | "settings">("program");
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<"program" | "kanban" | "schedule" | "chat" | "settings">("program");
   const [events, setEvents] = useState<EventData[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [regs, setRegs] = useState<Set<string>>(new Set());
+  const [selEv, setSelEv] = useState("");
+  const [newTitle, setNewTitle] = useState("");
+  const [newDue, setNewDue] = useState("");
+  const [newAssignee, setNewAssignee] = useState("");
+
+  // Определяем лучшую роль пользователя
+  const bestRole = demoMode ? getBestDemoRole(user.id) : "PARTICIPANT";
+  const isCurator = bestRole === "CURATOR";
+  const isSpeaker = bestRole === "SPEAKER";
+
+  // Мероприятия где пользователь куратор
+  const curatorEventIds = demoMode
+    ? DEMO_MEMBERSHIPS.filter((m) => m.user_id === user.id && m.context_role === "CURATOR").map((m) => m.event_id)
+    : [];
 
   useEffect(() => {
+    setLoading(true);
     if (demoMode) {
-      setEvents(DEMO_EVENTS.filter((e) => e.status === "PUBLISHED"));
+      // Куратор видит мероприятия где он куратор + все опубликованные
+      const allEvs = isCurator
+        ? DEMO_EVENTS.filter((e) => curatorEventIds.includes(e.id) || e.status === "PUBLISHED")
+        : DEMO_EVENTS.filter((e) => e.status === "PUBLISHED");
+      setEvents(allEvs);
+      // Задачи: куратор видит ВСЕ задачи своих мероприятий, спикер/участник — только свои
+      const myTasks = isCurator
+        ? DEMO_TASKS.filter((t) => curatorEventIds.includes(t.event_id))
+        : DEMO_TASKS.filter((t) => t.assigned_to === user.id);
+      setTasks([...myTasks]);
+      if (allEvs.length) setSelEv(allEvs[0].id);
       setLoading(false);
     } else {
       (async () => {
         try {
-          const evs = await apiFetch<EventData[]>("GET", "/api/events/public");
-          setEvents(evs || []);
-        } catch {
-          try { const evs = await apiFetch<EventData[]>("GET", "/api/events/"); setEvents((evs || []).filter((e: EventData) => e.status === "PUBLISHED")); } catch {}
-        }
+          const evs = await apiFetch<EventData[]>("GET", "/api/events/");
+          setEvents((evs || []).filter((e: EventData) => e.status === "PUBLISHED"));
+          const all: Task[] = [];
+          for (const ev of (evs || [])) {
+            try { const ts = await apiFetch<Task[]>("GET", `/api/tasks/?event_id=${ev.id}`); all.push(...(ts || [])); } catch {}
+          }
+          setTasks(isCurator ? all : all.filter((t) => t.assigned_to === user.id));
+          if (evs?.length) setSelEv(evs[0].id);
+        } catch {}
         finally { setLoading(false); }
       })();
     }
@@ -2318,8 +2481,75 @@ function ParticipantDashboard({
     setRegs((prev) => new Set(prev).add(id));
   };
 
+  const filtered = useMemo(() => tasks.filter((t) => t.event_id === selEv), [tasks, selEv]);
+  const selEvent = events.find((e) => e.id === selEv);
+
+  const pct = useCallback(
+    (eid: string) => {
+      const ts = tasks.filter((t) => t.event_id === eid);
+      if (!ts.length) return 0;
+      return Math.round((ts.filter((t) => t.status === "DONE").length / ts.length) * 100);
+    },
+    [tasks]
+  );
+
+  const moveTask = async (id: string, s: TaskStatus) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: s } : t)));
+    if (!demoMode) try { await apiFetch("PATCH", `/api/tasks/${id}/status`, { status: s }); } catch {}
+  };
+
+  const addTask = async () => {
+    if (!newTitle.trim() || !selEv) return;
+    // Куратор может назначать задачи другим, спикер/участник — только себе
+    const assigneeId = (isCurator && newAssignee) ? newAssignee : user.id;
+    const assignee = DEMO_ALL_USERS.find((u) => u.id === assigneeId) || { id: user.id, full_name: user.full_name };
+    const newTask: Task = {
+      id: `t-${Date.now()}`,
+      event_id: selEv,
+      title: newTitle.trim(),
+      assigned_to: assignee.id,
+      assigned_to_name: assignee.full_name,
+      created_by: user.id,
+      status: "TODO",
+      due_date: newDue || null,
+    };
+    if (demoMode) {
+      setTasks((prev) => [...prev, newTask]);
+      // Также добавить в глобальный DEMO_TASKS чтобы другие видели
+      DEMO_TASKS.push(newTask);
+    } else {
+      try {
+        const res = await apiFetch<Task>("POST", "/api/tasks/", { event_id: selEv, title: newTitle.trim(), assigned_to: assigneeId, due_date: newDue || undefined });
+        setTasks((prev) => [...prev, res]);
+      } catch { setTasks((prev) => [...prev, newTask]); }
+    }
+    setNewTitle(""); setNewDue(""); setNewAssignee("");
+  };
+
+  const delTask = async (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    if (!demoMode) try { await apiFetch("DELETE", `/api/tasks/${id}`); } catch {}
+  };
+
+  // Пользователи для назначения (куратор может назначать спикерам своих мероприятий)
+  const assignableUsers = isCurator ? DEMO_ALL_USERS.filter((u) => u.id !== user.id) : [];
+
+  // Назначить спикера (для куратора)
+  const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
+  const [speakerSearch, setSpeakerSearch] = useState("");
+  const assignSpeaker = (userId: string, eventId: string) => {
+    DEMO_MEMBERSHIPS.push({ user_id: userId, event_id: eventId, context_role: "SPEAKER" });
+    setShowAssignSpeaker("");
+    setSpeakerSearch("");
+  };
+
+  const roleLabel = isCurator ? "КУРАТОР СЕКЦИИ" : isSpeaker ? "СПИКЕР" : "УЧАСТНИК";
+  const roleColor = isCurator ? "#6b7280" : isSpeaker ? "#d97706" : "#16a34a";
+  const roleBg = isCurator ? "#f3f4f6" : isSpeaker ? "#fffbeb" : "#f0fdf4";
+
   const navItems = [
     { id: "program", icon: "📋", label: "Программа" },
+    { id: "kanban", icon: "📌", label: "Канбан задач" },
     { id: "schedule", icon: "📅", label: "Моё расписание" },
     { id: "chat", icon: "💬", label: "Чат" },
     { id: "settings", icon: "⚙️", label: "Настройки" },
@@ -2331,17 +2561,17 @@ function ParticipantDashboard({
       <div className="dashboard-wrapper">
       <aside className="dashboard-sidebar">
         <div style={{ textAlign: "center" }}>
-          <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#16a34a", color: "white", fontSize: 26, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
+          <div style={{ width: 72, height: 72, borderRadius: "50%", background: roleColor, color: "white", fontSize: 26, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
             {user.full_name[0]}
           </div>
           <h5 style={{ marginTop: 10, marginBottom: 4, fontWeight: 800, fontSize: 15 }}>{user.full_name}</h5>
-          <span style={{ display: "inline-block", padding: "3px 10px", background: "#f0fdf4", color: "#16a34a", borderRadius: 100, fontSize: 11, fontWeight: 800 }}>PARTICIPANT</span>
+          <span style={{ display: "inline-block", padding: "3px 10px", background: roleBg, color: roleColor, borderRadius: 100, fontSize: 11, fontWeight: 800 }}>{roleLabel}</span>
           {user.organization && <p style={{ fontSize: 11, color: "#777", marginTop: 5 }}>{user.organization}</p>}
           {demoMode && <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700, marginTop: 3 }}>DEMO</div>}
         </div>
         <nav className="sidebar-nav-list">
           {navItems.map((i) => (
-            <button key={i.id} className="nav-link" style={{ background: tab === i.id ? "#f0fdf4" : "#f1f5f9", color: tab === i.id ? "#16a34a" : "#475569" }} onClick={() => setTab(i.id as any)}>
+            <button key={i.id} className="nav-link" style={{ background: tab === i.id ? roleBg : "#f1f5f9", color: tab === i.id ? roleColor : "#475569" }} onClick={() => setTab(i.id as any)}>
               <span style={{ marginRight: 8 }}>{i.icon}</span>{i.label}
             </button>
           ))}
@@ -2352,13 +2582,115 @@ function ParticipantDashboard({
         {loading ? <Spinner /> : (
           <>
             {tab === "program" && (
-              <ProgramTab
-                events={events}
-                regs={regs}
-                onRegister={register}
-                demoMode={demoMode}
-                userId={user.id}
-              />
+              <div>
+                <ProgramTab
+                  events={events}
+                  regs={regs}
+                  onRegister={register}
+                  demoMode={demoMode}
+                  userId={user.id}
+                />
+                {/* Куратор: назначение спикеров */}
+                {isCurator && (
+                  <div style={{ marginTop: 24 }}>
+                    <h2 style={{ fontWeight: 900, fontSize: 18, color: "var(--primary-dark)", marginBottom: 12 }}>📋 Управление секцией</h2>
+                    {events.filter((e) => curatorEventIds.includes(e.id)).map((ev) => (
+                      <div key={ev.id} style={{ background: "white", borderRadius: 14, padding: "16px 20px", border: "1.5px solid var(--border)", marginBottom: 12 }}>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)", marginBottom: 8 }}>{ev.title}</div>
+                        <button
+                          onClick={() => setShowAssignSpeaker(showAssignSpeaker === ev.id ? "" : ev.id)}
+                          style={{ padding: "6px 14px", background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                        >
+                          🎤 Назначить спикера
+                        </button>
+                        {showAssignSpeaker === ev.id && (
+                          <div style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
+                            <input type="text" placeholder="Поиск по ФИО..." value={speakerSearch} onChange={(e) => setSpeakerSearch(e.target.value)}
+                              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
+                            {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(speakerSearch.toLowerCase())).map((u) => (
+                              <div key={u.id} onClick={() => assignSpeaker(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}
+                                onMouseOver={(e) => e.currentTarget.style.background = "#fffbeb"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
+                                <span>{u.full_name}</span>
+                                <span style={{ color: "#d97706", fontSize: 11 }}>Назначить спикером</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ═══ TAB: КАНБАН ═══ */}
+            {tab === "kanban" && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+                  <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)" }}>📌 Канбан задач</h1>
+                  <select value={selEv} onChange={(e) => setSelEv(e.target.value)} style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", fontWeight: 700, outline: "none", minWidth: 200 }}>
+                    {events.map((ev) => (
+                      <option key={ev.id} value={ev.id}>{ev.title}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {selEvent && (
+                  <div style={{ background: "white", borderRadius: 12, padding: "12px 18px", marginBottom: 16, border: "1.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{selEvent.title}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: pct(selEv) >= 75 ? "#16a34a" : "#d97706" }}>
+                      Готовность: {pct(selEv)}% · Задач: {filtered.length}
+                    </span>
+                  </div>
+                )}
+
+                {/* Добавить задачу */}
+                <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+                  <input type="text" placeholder="Новая задача..." value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()} style={{ flex: 2, minWidth: 180, padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                  {isCurator && (
+                    <select value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none", minWidth: 160 }}>
+                      <option value="">Назначить на...</option>
+                      {assignableUsers.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                    </select>
+                  )}
+                  <input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                  <button onClick={addTask} style={{ padding: "10px 22px", background: roleColor, color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", whiteSpace: "nowrap" }}>+ Добавить</button>
+                </div>
+
+                <div className="kanban-board">
+                  {(["TODO", "IN_PROGRESS", "DONE"] as TaskStatus[]).map((status) => {
+                    const col = COL_CFG[status];
+                    const colTasks = filtered.filter((t) => t.status === status);
+                    return (
+                      <div key={status} className="kanban-col">
+                        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 14, color: col.color, display: "flex", alignItems: "center", gap: 6 }}>
+                          {col.icon} {col.label}
+                          <span style={{ marginLeft: "auto", background: "white", padding: "2px 8px", borderRadius: 100, fontSize: 11, fontWeight: 900, color: col.color }}>{colTasks.length}</span>
+                        </div>
+                        {colTasks.map((task) => (
+                          <div key={task.id} className="kanban-card">
+                            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, color: "var(--primary-dark)" }}>{task.title}</div>
+                            {task.assigned_to_name && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>👤 {task.assigned_to_name}</div>}
+                            {task.due_date && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>📅 {task.due_date}</div>}
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {status === "TODO" && <button onClick={() => moveTask(task.id, "IN_PROGRESS")} style={{ padding: "4px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#d97706" }}>🔧 В работу</button>}
+                              {status === "IN_PROGRESS" && (
+                                <>
+                                  <button onClick={() => moveTask(task.id, "DONE")} style={{ padding: "4px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#16a34a" }}>✅ Готово</button>
+                                  <button onClick={() => moveTask(task.id, "TODO")} style={{ padding: "4px 10px", background: "#f1f5f9", border: "1px solid var(--border)", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#64748b" }}>← Назад</button>
+                                </>
+                              )}
+                              {status === "DONE" && <button onClick={() => moveTask(task.id, "IN_PROGRESS")} style={{ padding: "4px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#d97706" }}>🔄 Вернуть</button>}
+                              {(isCurator || task.created_by === user.id) && <button onClick={() => delTask(task.id)} style={{ padding: "4px 8px", background: "#fff1f1", border: "1px solid #fecaca", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#ef4444", marginLeft: "auto" }}>✕</button>}
+                            </div>
+                          </div>
+                        ))}
+                        {colTasks.length === 0 && <div style={{ textAlign: "center", padding: 24, color: "#ccc", fontSize: 13, fontWeight: 600 }}>Пусто</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
 
             {tab === "schedule" && (
@@ -2374,7 +2706,7 @@ function ParticipantDashboard({
                   {[
                     { l: "Имя", v: user.full_name },
                     { l: "Email", v: user.email },
-                    { l: "Роль", v: "PARTICIPANT" },
+                    { l: "Роль", v: roleLabel },
                     ...(user.organization ? [{ l: "Организация", v: user.organization }] : []),
                   ].map((f) => (
                     <div key={f.l} style={{ marginBottom: 14 }}>
@@ -2775,13 +3107,6 @@ function AppContent() {
     localStorage.removeItem("demo_user");
   };
 
-  const isCurator = () => {
-    if (!user) return false;
-    if (demoMode && user.organization === "CURATOR_DEMO") return true;
-    // TODO: при подключении бэка — проверять EventMembership
-    return false;
-  };
-
   if (initLoading) {
     return (
       <div
@@ -2843,8 +3168,6 @@ function AppContent() {
           user ? (
             user.global_role === "ORGANIZER" ? (
               <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
-            ) : isCurator() ? (
-              <CuratorDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
             ) : (
               <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
             )
