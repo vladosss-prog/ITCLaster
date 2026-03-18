@@ -2543,7 +2543,7 @@ function ParticipantDashboard({
   setSharedRegs: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"program" | "sections" | "kanban" | "schedule" | "chat" | "settings">("program");
+  const [tab, setTab] = useState<"program" | "sections" | "kanban" | "schedule" | "questions" | "final_report" | "chat" | "settings">("program");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [selEv, setSelEv] = useState("");
@@ -2842,6 +2842,130 @@ function ParticipantDashboard({
     setSpeakerResults([]);
   };
 
+  // ═══ ВОПРОСЫ КУРАТОРА ═══
+  const [qSections, setQSections] = useState<any[]>([]);
+  const [qReports, setQReports] = useState<Record<string, any[]>>({});
+  const [qComments, setQComments] = useState<Record<string, any[]>>({});
+  const [qExpanded, setQExpanded] = useState<Set<string>>(new Set());
+  const [qAnswerText, setQAnswerText] = useState<Record<string, string>>({});
+  const [qAnswering, setQAnswering] = useState<string>("");
+  const [qLoading, setQLoading] = useState(false);
+
+  const loadQuestions = async () => {
+    if (demoMode) {
+      // Demo: показываем демо комментарии
+      setQSections([{ id: "s1", title: "Секция ИнфоБез", event_id: "e1" }]);
+      setQReports({ s1: [{ id: "r1", title: "Угрозы безопасности 2026", section_id: "s1" }] });
+      setQComments({ r1: [
+        { id: "c1", report_id: "r1", author_name: "Иван Участников", text: "Как защититься от MITM?", created_at: new Date().toISOString() },
+        { id: "c2", report_id: "r1", author_name: "Анна Петрова", text: "Будут ли слайды доступны?", created_at: new Date().toISOString(), answer_text: "Выложим вечером", answer_by_name: "Куратор" },
+      ]});
+      return;
+    }
+    setQLoading(true);
+    try {
+      // Загружаем секции куратора
+      const token = localStorage.getItem("access_token") || "";
+      const evRes = await apiFetch<any[]>("GET", "/api/events/");
+      const allSecs: any[] = [];
+      for (const ev of evRes || []) {
+        try {
+          const secsRes = await apiFetch<any[]>("GET", `/api/events/${ev.id}/sections`);
+          for (const sec of secsRes || []) {
+            if (sec.curator_id === user.id || curatorEventIds.includes(ev.id)) allSecs.push(sec);
+          }
+        } catch {}
+      }
+      setQSections(allSecs);
+      // Загружаем доклады и комментарии
+      const repsMap: Record<string, any[]> = {};
+      const cmmMap: Record<string, any[]> = {};
+      for (const sec of allSecs) {
+        try {
+          const r = await fetch(`http://localhost:8000/api/sections/${sec.id}/reports`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+          const reps = r.ok ? await r.json() : [];
+          repsMap[sec.id] = reps;
+          for (const rep of reps) {
+            try {
+              const cr = await fetch(`http://localhost:8000/api/reports/${rep.id}/comments`, { cache: "no-store" });
+              cmmMap[rep.id] = cr.ok ? await cr.json() : [];
+            } catch { cmmMap[rep.id] = []; }
+          }
+        } catch { repsMap[sec.id] = []; }
+      }
+      setQReports(repsMap);
+      setQComments(cmmMap);
+    } catch {}
+    finally { setQLoading(false); }
+  };
+
+  const submitAnswer = async (commentId: string, reportId: string) => {
+    const text = (qAnswerText[commentId] || "").trim();
+    if (!text) return;
+    setQAnswering(commentId);
+    if (demoMode) {
+      setQComments(prev => ({ ...prev, [reportId]: (prev[reportId]||[]).map(c => c.id === commentId ? { ...c, answer_text: text, answer_by_name: user.full_name } : c) }));
+      setQAnswerText(prev => ({ ...prev, [commentId]: "" }));
+      setQAnswering("");
+      return;
+    }
+    try {
+      const saved = await apiFetch<any>("PUT", `/api/comments/${commentId}/answer`, { text });
+      setQComments(prev => ({ ...prev, [reportId]: (prev[reportId]||[]).map(c => c.id === commentId ? saved : c) }));
+      setQAnswerText(prev => ({ ...prev, [commentId]: "" }));
+    } catch (e: any) { alert(e?.message || "Ошибка"); }
+    setQAnswering("");
+  };
+
+  useEffect(() => {
+    if (tab === "questions" && isCurator) loadQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, isCurator, demoMode]);
+
+  // ═══ ИТОГОВЫЙ ОТЧЁТ ═══
+  const [frSectionId, setFrSectionId] = useState("");
+  const [frText, setFrText] = useState("");
+  const [frSaving, setFrSaving] = useState(false);
+  const [frSaved, setFrSaved] = useState(false);
+  const [frSections, setFrSections] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (tab !== "final_report" || !isCurator) return;
+    if (demoMode) { setFrSections(DEMO_SECTIONS_PROGRAM["e1"] || []); return; }
+    (async () => {
+      try {
+        const evRes = await apiFetch<any[]>("GET", "/api/events/");
+        const secs: any[] = [];
+        for (const ev of evRes || []) {
+          try {
+            const token = localStorage.getItem("access_token") || "";
+            const r = await fetch(`http://localhost:8000/api/events/${ev.id}/curators`, { headers: { Authorization: `Bearer ${token}` } });
+            if (r.ok) {
+              const ms: any[] = await r.json();
+              if (ms.some((m: any) => m.user_id === user.id)) {
+                const sr = await apiFetch<any[]>("GET", `/api/events/${ev.id}/sections`);
+                (sr || []).forEach(s => secs.push(s));
+              }
+            }
+          } catch {}
+        }
+        setFrSections(secs);
+        if (secs.length > 0 && !frSectionId) setFrSectionId(secs[0].id);
+      } catch {}
+    })();
+  }, [tab, isCurator, demoMode]);
+
+  const saveFinalReport = async () => {
+    if (!frText.trim() || !frSectionId) return;
+    setFrSaving(true); setFrSaved(false);
+    if (demoMode) { setFrSaving(false); setFrSaved(true); setTimeout(() => setFrSaved(false), 3000); return; }
+    try {
+      await apiFetch("POST", `/api/sections/${frSectionId}/curator-report`, { text: frText.trim() });
+      setFrSaved(true); setTimeout(() => setFrSaved(false), 3000);
+    } catch (e: any) { alert(e?.message || "Ошибка сохранения"); }
+    finally { setFrSaving(false); }
+  };
+
   const roleLabel = isCurator ? "КУРАТОР СЕКЦИИ" : isSpeaker ? "СПИКЕР" : "УЧАСТНИК";
   const roleColor = isCurator ? "#6b7280" : isSpeaker ? "#d97706" : "#16a34a";
   const roleBg = isCurator ? "#f3f4f6" : isSpeaker ? "#fffbeb" : "#f0fdf4";
@@ -2851,6 +2975,8 @@ function ParticipantDashboard({
     ...(isCurator ? [{ id: "sections", icon: "🗂️", label: "Мои секции" }] : []),
     { id: "kanban", icon: "📌", label: "Канбан задач" },
     { id: "schedule", icon: "📅", label: "Моё расписание" },
+    ...(isCurator ? [{ id: "questions", icon: "💬", label: "Вопросы" }] : []),
+    ...(isCurator ? [{ id: "final_report", icon: "📝", label: "Итоговый отчёт" }] : []),
     { id: "chat", icon: "💬", label: "Чат" },
     { id: "settings", icon: "⚙️", label: "Настройки" },
   ];
@@ -3178,6 +3304,120 @@ function ParticipantDashboard({
 
             {tab === "schedule" && (
               <ScheduleTab demoMode={demoMode} regs={regs} events={events} />
+            )}
+
+                        {/* ═══ ВОПРОСЫ УЧАСТНИКОВ (только куратор) ═══ */}
+            {tab === "questions" && isCurator && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                  <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", margin: 0 }}>💬 Вопросы участников</h1>
+                  <button onClick={loadQuestions} style={{ padding: "8px 16px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>🔄 Обновить</button>
+                </div>
+                {qLoading && <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Загрузка...</div>}
+                {!qLoading && qSections.length === 0 && (
+                  <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
+                    <div style={{ fontWeight: 700 }}>Вопросов пока нет</div>
+                  </div>
+                )}
+                {qSections.map((sec: any) => {
+                  const reps = qReports[sec.id] || [];
+                  return (
+                    <div key={sec.id} style={{ marginBottom: 20 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary)", marginBottom: 10 }}>📌 {sec.title}</div>
+                      {reps.map((rep: any) => {
+                        const coms = qComments[rep.id] || [];
+                        const unanswered = coms.filter((c: any) => !c.answer_text).length;
+                        const isExp = qExpanded.has(rep.id);
+                        return (
+                          <div key={rep.id} style={{ background: "white", borderRadius: 14, border: "1.5px solid var(--border)", marginBottom: 10, overflow: "hidden", boxShadow: "0 2px 8px rgba(74,89,138,0.06)" }}>
+                            <div style={{ padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8fbff", borderBottom: "1px solid var(--border)" }}>
+                              <div>
+                                <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>🎤 {rep.title}</div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                                  {coms.length} вопрос{coms.length === 1 ? "" : coms.length < 5 ? "а" : "ов"}
+                                  {unanswered > 0 && <span style={{ marginLeft: 8, color: "#dc2626", fontWeight: 700 }}>· {unanswered} без ответа</span>}
+                                </div>
+                              </div>
+                              <button onClick={() => setQExpanded(prev => { const n = new Set(prev); isExp ? n.delete(rep.id) : n.add(rep.id); return n; })}
+                                style={{ padding: "6px 14px", background: isExp ? "#e8f0fe" : "var(--primary)", color: isExp ? "var(--primary)" : "white", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                {isExp ? "Скрыть ↑" : `Показать (${coms.length}) ↓`}
+                              </button>
+                            </div>
+                            {isExp && (
+                              <div style={{ padding: "14px 18px" }}>
+                                {coms.length === 0 ? (
+                                  <div style={{ color: "#94a3b8", fontSize: 13 }}>Вопросов нет</div>
+                                ) : coms.map((c: any) => (
+                                  <div key={c.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                                      <span style={{ fontWeight: 700, fontSize: 13, color: "var(--primary-dark)" }}>{c.author_name || "Участник"}</span>
+                                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{new Date(c.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                                    </div>
+                                    <div style={{ fontSize: 14, color: "#334155", marginBottom: 10, padding: "8px 12px", background: "#f8fafc", borderRadius: 8 }}>{c.text}</div>
+                                    {c.answer_text && (
+                                      <div style={{ padding: "10px 14px", background: "#eef6ff", borderRadius: 10, borderLeft: "3px solid var(--primary)", marginBottom: 8 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: "var(--primary)", marginBottom: 4 }}>Ответ {c.answer_by_name ? `· ${c.answer_by_name}` : ""}</div>
+                                        <div style={{ fontSize: 13, color: "#334155" }}>{c.answer_text}</div>
+                                      </div>
+                                    )}
+                                    <div style={{ display: "flex", gap: 8 }}>
+                                      <input type="text"
+                                        placeholder={c.answer_text ? "Изменить ответ..." : "Написать ответ..."}
+                                        value={qAnswerText[c.id] || ""}
+                                        onChange={e => setQAnswerText(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                        onKeyDown={e => e.key === "Enter" && submitAnswer(c.id, rep.id)}
+                                        style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                                      <button onClick={() => submitAnswer(c.id, rep.id)}
+                                        disabled={qAnswering === c.id || !(qAnswerText[c.id]||"").trim()}
+                                        style={{ padding: "8px 14px", background: c.answer_text ? "#f59e0b" : "var(--primary)", color: "white", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif", opacity: (qAnswering === c.id || !(qAnswerText[c.id]||"").trim()) ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                                        {qAnswering === c.id ? "..." : c.answer_text ? "Обновить" : "Ответить"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {reps.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13, padding: "8px 0" }}>Докладов в секции нет</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ═══ ИТОГОВЫЙ ОТЧЁТ (только куратор) ═══ */}
+            {tab === "final_report" && isCurator && (
+              <div>
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 8 }}>📝 Итоговый отчёт секции</h1>
+                <p style={{ color: "#64748b", fontSize: 14, marginBottom: 20 }}>Напишите итоговый отчёт о проведении секции.</p>
+                {frSections.length > 1 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6 }}>Секция</label>
+                    <select value={frSectionId} onChange={e => setFrSectionId(e.target.value)}
+                      style={{ padding: "9px 14px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", minWidth: 240 }}>
+                      {frSections.map((s: any) => <option key={s.id} value={s.id}>{s.title}</option>)}
+                    </select>
+                  </div>
+                )}
+                {frSaved && (
+                  <div style={{ background: "#f0fdf4", color: "#16a34a", padding: "12px 16px", borderRadius: 10, marginBottom: 16, fontWeight: 700 }}>
+                    Отчёт успешно сохранён!
+                  </div>
+                )}
+                <textarea value={frText} onChange={e => setFrText(e.target.value)} rows={14}
+                  placeholder="Опишите как прошла секция: количество участников, основные обсуждения, выводы, проблемы..."
+                  style={{ width: "100%", padding: "16px 18px", borderRadius: 14, border: "1.5px solid var(--border)", fontSize: 14, fontFamily: "Nunito, sans-serif", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.7, marginBottom: 16 }} />
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <button onClick={saveFinalReport} disabled={frSaving || !frText.trim() || !frSectionId}
+                    style={{ padding: "12px 32px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: frSaving ? "not-allowed" : "pointer", opacity: (frSaving || !frText.trim()) ? 0.6 : 1, fontFamily: "Nunito, sans-serif" }}>
+                    {frSaving ? "Сохранение..." : "Сохранить отчёт"}
+                  </button>
+                  {frText.trim() && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{frText.length} символов</span>}
+                </div>
+              </div>
             )}
 
             {tab === "chat" && <ChatView user={user} demoMode={demoMode} />}
