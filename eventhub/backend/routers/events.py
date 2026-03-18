@@ -409,6 +409,12 @@ def assign_curator(
         section_id=body.section_id,
     )
     db.add(membership)
+
+    # Меняем global_role на CURATOR если у пользователя роль PARTICIPANT
+    if target_user.global_role == "PARTICIPANT":
+        target_user.global_role = "CURATOR"
+        db.add(target_user)
+
     db.commit()
     db.refresh(membership)
 
@@ -432,7 +438,58 @@ def list_curators(
     return [MembershipOut.model_validate(m, from_attributes=True) for m in db.execute(stmt).scalars().all()]
 
 
-@router.get("/{event_id}/speakers", response_model=List[MembershipOut])
+@router.post("/{event_id}/speakers", response_model=MembershipOut)
+def assign_speaker_to_event(
+    event_id: str,
+    body: AssignCuratorIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MembershipOut:
+    """Назначить спикера на мероприятие (без привязки к докладу). Только владелец."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец мероприятия может назначать спикеров")
+
+    target_user = db.get(User, body.user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Проверяем существующую роль
+    stmt = select(EventMembership).where(
+        EventMembership.user_id == body.user_id,
+        EventMembership.event_id == event_id,
+    )
+    existing = db.execute(stmt).scalar_one_or_none()
+    if existing:
+        if existing.context_role == "OWNER":
+            raise HTTPException(status_code=409, detail="Пользователь является владельцем мероприятия")
+        if existing.context_role == "SPEAKER":
+            return MembershipOut.model_validate(existing, from_attributes=True)
+
+    membership = EventMembership(
+        user_id=body.user_id,
+        event_id=event_id,
+        context_role="SPEAKER",
+        section_id=body.section_id,
+    )
+    db.add(membership)
+
+    # Меняем global_role на SPEAKER если у пользователя роль PARTICIPANT
+    if target_user.global_role == "PARTICIPANT":
+        target_user.global_role = "SPEAKER"
+        db.add(target_user)
+
+    db.commit()
+    db.refresh(membership)
+
+    _auto_add_to_event_chat(event_id, body.user_id, "Пользователь назначен спикером", db)
+
+    return MembershipOut.model_validate(membership, from_attributes=True)
+
+
+
 def list_speakers(
     event_id: str,
     current_user: User = Depends(get_current_user),
@@ -579,6 +636,12 @@ def assign_speaker(
         report_id=report_id,
     )
     db.add(membership)
+
+    # Меняем global_role на SPEAKER если у пользователя роль PARTICIPANT
+    if target_user.global_role == "PARTICIPANT":
+        target_user.global_role = "SPEAKER"
+        db.add(target_user)
+
     db.commit()
     db.refresh(report)
 

@@ -2054,6 +2054,9 @@ function OrganizerDashboard({
   const assignCurator = async (userId: string, eventId: string) => {
     // Всегда обновляем локальный стейт для мгновенного отображения
     setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
+    // Кэшируем пользователя для отображения имени
+    const foundUser = curatorResults.find((u) => u.id === userId);
+    if (foundUser) setAllUsers((prev) => prev.some((u) => u.id === userId) ? prev : [...prev, foundUser]);
     if (!demoMode) {
       try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch (e: any) { console.warn("API curator assign:", e?.message); }
     }
@@ -2082,9 +2085,11 @@ function OrganizerDashboard({
   };
   const assignSpeakerOrg = async (userId: string, eventId: string) => {
     setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
+    // Кэшируем пользователя для отображения имени
+    const foundUser = speakerResults.find((u) => u.id === userId);
+    if (foundUser) setAllUsers((prev) => prev.some((u) => u.id === userId) ? prev : [...prev, foundUser]);
     if (!demoMode) {
-      // Бэкенд: назначение спикера требует report_id. Если нет — пробуем как куратора с последующим обновлением.
-      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch (e: any) { console.warn("API speaker assign:", e?.message); }
+      try { await apiFetch("POST", `/api/events/${eventId}/speakers`, { user_id: userId }); } catch (e: any) { console.warn("API speaker assign:", e?.message); }
     }
     setShowAssignSpeaker("");
     setSpeakerSearch("");
@@ -2121,6 +2126,30 @@ function OrganizerDashboard({
             } catch {}
           }
           setTasks(all);
+          // Load curators and speakers for all events (to display in cards)
+          const newMemberships: DemoMembership[] = [];
+          for (const ev of evs) {
+            try {
+              const curators = await apiFetch<any[]>("GET", `/api/events/${ev.id}/curators`);
+              for (const m of (curators || [])) {
+                newMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "CURATOR" as const });
+              }
+            } catch {}
+            try {
+              const speakers = await apiFetch<any[]>("GET", `/api/events/${ev.id}/speakers`);
+              for (const m of (speakers || [])) {
+                newMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "SPEAKER" as const });
+              }
+            } catch {}
+          }
+          if (newMemberships.length > 0) {
+  setMemberships((prev) => {
+    // Оставляем PARTICIPANT-записи (регистрации на мероприятия),
+    // заменяем CURATOR/SPEAKER свежими данными из API
+    const participantEntries = prev.filter((m) => m.context_role === "PARTICIPANT");
+    return [...participantEntries, ...newMemberships];
+  });
+}
         }
       } catch {}
       finally { setLoading(false); }
@@ -2323,6 +2352,22 @@ function OrganizerDashboard({
                                 ))}
                               </div>
                             )}
+                            {/* Отображение назначенных кураторов */}
+                            {memberships.filter((m) => m.event_id === ev.id && m.context_role === "CURATOR").length > 0 && (
+                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Кураторы:</span>
+                                {memberships.filter((m) => m.event_id === ev.id && m.context_role === "CURATOR").map((m) => {
+                                  const allKnownUsers = allUsers.length ? allUsers : DEMO_ALL_USERS;
+                                  const u = allKnownUsers.find((x) => x.id === m.user_id);
+                                  const name = u?.full_name || m.user_id;
+                                  return (
+                                    <span key={m.user_id} style={{ fontSize: 11, padding: "2px 8px", background: "#e8f0fe", color: "var(--primary)", borderRadius: 100, fontWeight: 700 }}>
+                                      {name}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); setShowAssignSpeaker(showAssignSpeaker === ev.id ? "" : ev.id); }}
                               style={{ marginTop: 4, padding: "5px 14px", background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
@@ -2340,6 +2385,22 @@ function OrganizerDashboard({
                                     <span style={{ color: "#d97706", fontSize: 11 }}>Назначить</span>
                                   </div>
                                 ))}
+                              </div>
+                            )}
+                            {/* Отображение назначенных спикеров */}
+                            {memberships.filter((m) => m.event_id === ev.id && m.context_role === "SPEAKER").length > 0 && (
+                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Спикеры:</span>
+                                {memberships.filter((m) => m.event_id === ev.id && m.context_role === "SPEAKER").map((m) => {
+                                  const allKnownUsers = allUsers.length ? allUsers : DEMO_ALL_USERS;
+                                  const u = allKnownUsers.find((x) => x.id === m.user_id);
+                                  const name = u?.full_name || m.user_id;
+                                  return (
+                                    <span key={m.user_id} style={{ fontSize: 11, padding: "2px 8px", background: "#fffbeb", color: "#d97706", borderRadius: 100, fontWeight: 700 }}>
+                                      {name}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
