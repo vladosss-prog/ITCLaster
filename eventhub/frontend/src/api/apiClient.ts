@@ -19,23 +19,26 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Если токен протух — разлогиниваем
+// Если токен протух — разлогиниваем (только если не на публичной странице)
 api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem("access_token");
-      window.location.href = "/login";
+      const isPublicUrl = error.config?.url?.includes("/public");
+      if (!isPublicUrl) {
+        localStorage.removeItem("access_token");
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }
 );
 
 // -----------------------------------------------------------
-// ТИПЫ (соответствуют БД v2.0)
+// ТИПЫ (синхронизированы с бэкендом)
 // -----------------------------------------------------------
 export type GlobalRole = "PARTICIPANT" | "ORGANIZER";
-export type ContextRole = "PARTICIPANT" | "CURATOR" | "SPEAKER";
+export type ContextRole = "PARTICIPANT" | "CURATOR" | "SPEAKER" | "OWNER";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 export type EventStatus = "DRAFT" | "PUBLISHED" | "FINISHED";
 export type SectionFormat = "SEQUENTIAL" | "ROUNDTABLE" | "GAME" | "OTHER";
@@ -51,7 +54,7 @@ export interface User {
   organization?: string;
 }
 
-export interface Event {
+export interface EventData {
   id: string;
   title: string;
   description?: string | null;
@@ -122,6 +125,13 @@ export interface FeedbackAggregate {
   distribution: Record<number, number>;
 }
 
+export interface ProgressOut {
+  event_id: string;
+  total: number;
+  done: number;
+  progress: number;
+}
+
 export interface ChatRoom {
   id: string;
   event_id?: string;
@@ -178,88 +188,113 @@ export interface MyScheduleItem {
   event_id: string;
 }
 
+export interface CalendarItem {
+  id: string;
+  title: string;
+  start: string;
+  end: string | null;
+  type: string;
+  color: string | null;
+}
+
 // -----------------------------------------------------------
 // БЕК 1 — AUTH
-// routers/auth.py
 // -----------------------------------------------------------
 export const authAPI = {
-  // POST /api/auth/register
+  // POST /api/auth/register → UserOut (НЕ токен)
   register: (data: { email: string; password: string; full_name: string }) =>
-    api.post<{ access_token: string; token_type: string }>("/api/auth/register", data),
+    api.post<User>("/api/auth/register", data),
 
-  // POST /api/auth/login
+  // POST /api/auth/login → TokenOut
   login: (data: { email: string; password: string }) =>
-    api.post<{ access_token: string; token_type: string }>("/api/auth/login", data),
+    api.post<{ access_token: string; token_type: string; user: User }>("/api/auth/login", data),
 
   // GET /api/auth/me
   me: () => api.get<User>("/api/auth/me"),
+
+  // POST /api/auth/register-organizer
+  registerOrganizer: (data: { email: string; password: string; full_name: string }) =>
+    api.post<User>("/api/auth/register-organizer", data),
+
+  // POST /api/auth/promote
+  promote: (data: { user_id: string; role: string }) =>
+    api.post<User>("/api/auth/promote", data),
 };
 
 // -----------------------------------------------------------
 // БЕК 1 — EVENTS + SECTIONS + REPORTS
-// routers/events.py
 // -----------------------------------------------------------
 export const eventsAPI = {
-  // POST /api/events/
-  create: (data: Partial<Event>) =>
-    api.post<Event>("/api/events/", data),
+  create: (data: Partial<EventData>) =>
+    api.post<EventData>("/api/events/", data),
 
-  // GET /api/events/
   getAll: () =>
-    api.get<Event[]>("/api/events/"),
+    api.get<EventData[]>("/api/events/"),
 
-  // GET /api/events/{id}
+  // Публичный список (без JWT)
+  getPublic: () =>
+    api.get<EventData[]>("/api/events/public"),
+
   getOne: (id: string) =>
-    api.get<Event>(`/api/events/${id}`),
+    api.get<EventData>(`/api/events/${id}`),
 
-  // POST /api/events/{id}/sections
+  // PATCH /api/events/{id}
+  update: (id: string, data: Partial<EventData>) =>
+    api.patch<EventData>(`/api/events/${id}`, data),
+
+  // DELETE /api/events/{id}
+  delete: (id: string) =>
+    api.delete(`/api/events/${id}`),
+
+  // GET /api/events/{id}/sections
+  getSections: (eventId: string) =>
+    api.get<Section[]>(`/api/events/${eventId}/sections`),
+
   createSection: (eventId: string, data: Partial<Section>) =>
     api.post<Section>(`/api/events/${eventId}/sections`, data),
 
-  // POST /api/events/{id}/curators
   assignCurator: (eventId: string, data: { user_id: string; section_id: string }) =>
     api.post(`/api/events/${eventId}/curators`, data),
-  
-  update: (id: string, data: Partial<Event>) =>
-  api.patch<Event>(`/api/events/${id}`, data),
 };
 
 export const sectionsAPI = {
-  // POST /api/sections/{id}/reports
   createReport: (sectionId: string, data: Partial<Report>) =>
     api.post<Report>(`/api/sections/${sectionId}/reports`, data),
 };
 
 export const reportsAPI = {
-  // POST /api/reports/{id}/speaker
-  assignSpeaker: (reportId: string, data: { speaker_id: string }) =>
+  // POST /api/reports/{id}/speaker — бэк ожидает { user_id }, НЕ speaker_id
+  assignSpeaker: (reportId: string, data: { user_id: string }) =>
     api.post(`/api/reports/${reportId}/speaker`, data),
 
-  // PATCH /api/reports/{id} — спикер обновляет свои данные
+  // PATCH /api/reports/{id}
   update: (id: string, data: Partial<Report>) =>
     api.patch<Report>(`/api/reports/${id}`, data),
+
+  // GET /api/reports/my — доклады текущего спикера
+  getMy: () =>
+    api.get<Report[]>("/api/reports/my"),
+
+  // GET /api/reports/{id}/comments
+  getComments: (reportId: string) =>
+    api.get<Comment[]>(`/api/reports/${reportId}/comments`),
 };
 
 export const usersAPI = {
-  // GET /api/users/search?q=ФИО
   search: (q: string) =>
     api.get<User[]>("/api/users/search", { params: { q } }),
 };
 
 // -----------------------------------------------------------
 // БЕК 4 — ЗАДАЧИ + КАНБАН
-// routers/tasks.py
 // -----------------------------------------------------------
 export const tasksAPI = {
-  // POST /api/tasks/
   create: (data: Partial<Task>) =>
     api.post<Task>("/api/tasks/", data),
 
-  // GET /api/tasks/?event_id=
   getByEvent: (eventId: string) =>
     api.get<Task[]>("/api/tasks/", { params: { event_id: eventId } }),
 
-  // PATCH /api/tasks/{id}/status
   updateStatus: (id: string, status: TaskStatus) =>
     api.patch<Task>(`/api/tasks/${id}/status`, { status }),
 
@@ -267,83 +302,70 @@ export const tasksAPI = {
   delete: (id: string) =>
     api.delete(`/api/tasks/${id}`),
 
-  // GET /api/events/{id}/progress
+  // GET /api/events/{id}/progress → ProgressOut
   getProgress: (eventId: string) =>
-    api.get<{ percent: number }>(`/api/events/${eventId}/progress`),
+    api.get<ProgressOut>(`/api/events/${eventId}/progress`),
 
   // GET /api/events/calendar
   getCalendar: () =>
-    api.get("/api/events/calendar"),
+    api.get<CalendarItem[]>("/api/events/calendar"),
 };
 
 // -----------------------------------------------------------
 // БЕК 5 — УЧАСТНИК + ПРОГРАММА
-// routers/participants.py
 // -----------------------------------------------------------
 export const participantsAPI = {
-  // POST /api/events/{id}/register
   registerToEvent: (eventId: string) =>
     api.post(`/api/events/${eventId}/register`),
 
-  // GET /api/events/{id}/program  (публичный, без токена)
   getProgram: (eventId: string) =>
     api.get<ProgramOut>(`/api/events/${eventId}/program`),
 
-  // GET /api/schedule/my
   getMySchedule: () =>
     api.get<MyScheduleItem[]>("/api/schedule/my"),
 
-  // POST /api/schedule/reports/{id}
   addToSchedule: (reportId: string) =>
     api.post(`/api/schedule/reports/${reportId}`),
 
-  // DELETE /api/schedule/reports/{id}
   removeFromSchedule: (reportId: string) =>
     api.delete(`/api/schedule/reports/${reportId}`),
 
-  // POST /api/reports/{id}/comments
   addComment: (reportId: string, data: { text: string }) =>
     api.post<Comment>(`/api/reports/${reportId}/comments`, data),
 
-  // PUT /api/comments/{id}/answer
+  getComments: (reportId: string) =>
+    api.get<Comment[]>(`/api/reports/${reportId}/comments`),
+
   answerComment: (commentId: string, data: { text: string }) =>
     api.put<Comment>(`/api/comments/${commentId}/answer`, data),
 
-  // POST /api/reports/{id}/feedback
   addFeedback: (reportId: string, data: { rating: number }) =>
     api.post<Feedback>(`/api/reports/${reportId}/feedback`, data),
 
-  // GET /api/reports/{id}/feedback
   getFeedback: (reportId: string) =>
     api.get<FeedbackAggregate>(`/api/reports/${reportId}/feedback`),
 };
 
 // -----------------------------------------------------------
 // БЕК 6 — МЕССЕНДЖЕР + WEBSOCKET
-// routers/chat.py
 // -----------------------------------------------------------
 export const chatAPI = {
-  // GET /api/chat/my
   getMy: () =>
     api.get<ChatRoom[]>("/api/chat/my"),
 
-  // POST /api/chat/direct
   createDirect: (data: { user_id: string }) =>
     api.post<ChatRoom>("/api/chat/direct", data),
 
-  // GET /api/chat/{room_id}/messages
   getMessages: (roomId: string, params?: { limit?: number; offset?: number }) =>
     api.get<ChatMessagesPage>(`/api/chat/${roomId}/messages`, { params }),
 };
 
 // -----------------------------------------------------------
 // WEBSOCKET — утилита подключения к чату
-// Использование: const ws = createChatSocket(roomId, onMessage)
 // -----------------------------------------------------------
 export const createChatSocket = (roomId: string, onEvent: (e: ChatSocketEvent) => void): WebSocket => {
   const token = localStorage.getItem("access_token");
   const wsBase = BASE_URL.replace("http", "ws");
-  // backend/main.py: chat router has prefix "/api/chat", websocket path "/ws/{room_id}"
   const ws = new WebSocket(`${wsBase}/api/chat/ws/${roomId}?token=${token}`);
 
   ws.onmessage = (event) => {

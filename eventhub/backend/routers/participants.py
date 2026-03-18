@@ -343,6 +343,22 @@ def remove_report_from_schedule(
     return None
 
 
+@router.get("/reports/{id}/comments", response_model=List[CommentOut])
+def list_report_comments(
+    id: str,
+    db: Session = Depends(get_db),
+) -> List[CommentOut]:
+    """Список комментариев к докладу."""
+    _get_report_with_section_or_404(db, id)
+    stmt = (
+        select(ReportComment)
+        .where(ReportComment.report_id == id)
+        .order_by(ReportComment.created_at.asc())
+    )
+    comments = list(db.execute(stmt).scalars().all())
+    return [CommentOut.model_validate(c, from_attributes=True) for c in comments]
+
+
 @router.post("/reports/{id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
 def create_report_comment(
     id: str,

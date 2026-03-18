@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { participantsAPI } from "../api/apiClient";
+import { participantsAPI, reportsAPI } from "../api/apiClient";
 import type { Comment, FeedbackAggregate, MyScheduleItem } from "../api/apiClient";
 import { ErrorBlock } from "../components/ui/ErrorBlock";
 import { Spinner } from "../components/ui/Spinner";
@@ -33,8 +33,6 @@ export function ReportPage({ demoMode }: { demoMode: boolean }) {
     setLoading(true);
     setError("");
 
-    // В текущей версии бэка нет GET /api/reports/{id}/comments,
-    // поэтому комментарии показываем только в demo / как "добавленные в этой сессии".
     const load = async () => {
       try {
         if (demoMode) {
@@ -74,16 +72,16 @@ export function ReportPage({ demoMode }: { demoMode: boolean }) {
           return;
         }
 
-        // Берём базовую инфу о докладе из расписания пользователя (если он добавлен).
-        // Если доклада в расписании нет, всё равно покажем страницу с оценкой/комментарием,
-        // но часть полей будет недоступна (бэк пока не даёт GET /reports/{id}).
-        const [schedRes, fbRes] = await Promise.all([
+        // Загружаем расписание, фидбэк и комментарии параллельно
+        const [schedRes, fbRes, commentsRes] = await Promise.all([
           participantsAPI.getMySchedule(),
           participantsAPI.getFeedback(id),
+          reportsAPI.getComments(id),
         ]);
         const found = (schedRes.data || []).find((x) => x.report.id === id) || null;
         setScheduleItem(found);
         setFeedback(fbRes.data);
+        setComments(commentsRes.data || []);
       } catch (e: any) {
         setError(e?.response?.data?.detail || e?.message || "Не удалось загрузить доклад");
       } finally {
@@ -235,11 +233,6 @@ export function ReportPage({ demoMode }: { demoMode: boolean }) {
           {/* Comments */}
           <div style={{ background: "white", borderRadius: 16, padding: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
             <h2 style={{ margin: 0, fontWeight: 900, fontSize: 18 }}>Комментарии</h2>
-            {!demoMode ? (
-              <div style={{ marginTop: 8, color: "#64748b", fontWeight: 700, fontSize: 13 }}>
-                В текущем бэке нет `GET /api/reports/{id}/comments`, поэтому показываем только новые комментарии (после отправки).
-              </div>
-            ) : null}
 
             <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
               <input

@@ -127,6 +127,23 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
+class EventUpdateIn(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[str] = None
+
+
+class ReportUpdateIn(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    presentation_format: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    speaker_confirmed: Optional[bool] = None
+
+
 # ---------- Helpers ----------
 
 
@@ -188,6 +205,23 @@ def list_events(
             )
         )
         .distinct()          # Fix #20: убираем дубли
+        .offset(skip)
+        .limit(limit)
+    )
+    events = list(db.execute(stmt).scalars().all())
+    return [EventOut.model_validate(e, from_attributes=True) for e in events]
+
+
+@router.get("/public", response_model=List[EventOut])
+def list_events_public(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> List[EventOut]:
+    """Публичный список мероприятий (без авторизации). Только PUBLISHED."""
+    stmt = (
+        select(Event)
+        .where(Event.status == "PUBLISHED")
         .offset(skip)
         .limit(limit)
     )
@@ -354,6 +388,17 @@ def create_report(
     return ReportOut.model_validate(report, from_attributes=True)
 
 
+@reports_router.get("/my", response_model=List[ReportOut])
+def my_reports(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[ReportOut]:
+    """Доклады, где текущий пользователь — спикер."""
+    stmt = select(Report).where(Report.speaker_id == current_user.id)
+    reports = list(db.execute(stmt).scalars().all())
+    return [ReportOut.model_validate(r, from_attributes=True) for r in reports]
+
+
 @reports_router.post("/{report_id}/speaker", response_model=ReportOut)
 def assign_speaker(
     report_id: str,
@@ -430,3 +475,86 @@ def search_users(
     )
     users = list(db.execute(stmt).scalars().all())
     return [UserOut.model_validate(u, from_attributes=True) for u in users]
+
+
+# =============================================
+# НОВЫЕ ЭНДПОИНТЫ (F1, F8, F13, F14)
+# =============================================
+
+
+@router.patch("/{event_id}", response_model=EventOut)
+def update_event(
+    event_id: str,
+    body: EventUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EventOut:
+    """Обновить мероприятие (только владелец)."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец может редактировать мероприятие")
+
+    for field in ("title", "description", "start_date", "end_date", "status"):
+        value = getattr(body, field, None)
+        if value is not None:
+            setattr(event, field, value)
+
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return EventOut.model_validate(event, from_attributes=True)
+
+
+@router.delete("/{event_id}", status_code=204)
+def delete_event(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Удалить мероприятие (только владелец). Каскадно удаляет membership."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец может удалить мероприятие")
+
+    # Удаляем связанные memberships
+    from sqlalchemy import delete as sa_delete
+    db.execute(sa_delete(EventMembership).where(EventMembership.event_id == event_id))
+    db.delete(event)
+    db.commit()
+    return None
+
+
+@reports_router.patch("/{report_id}", response_model=ReportOut)
+def update_report(
+    report_id: str,
+    body: ReportUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReportOut:
+    """Обновить доклад (владелец мероприятия или назначенный спикер)."""
+    report = db.get(Report, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Доклад не найден")
+
+    section = db.get(Section, report.section_id)
+    event = db.get(Event, section.event_id) if section else None
+
+    is_owner = event and event.owner_id == current_user.id
+    is_speaker = report.speaker_id == current_user.id
+
+    if not is_owner and not is_speaker:
+        raise HTTPException(status_code=403, detail="Нет прав на редактирование доклада")
+
+    for field in ("title", "description", "presentation_format", "start_time", "end_time", "speaker_confirmed"):
+        value = getattr(body, field, None)
+        if value is not None:
+            setattr(report, field, value)
+
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return ReportOut.model_validate(report, from_attributes=True)

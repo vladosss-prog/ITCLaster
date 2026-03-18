@@ -191,6 +191,24 @@ async def update_task_status(
     return TaskOut.model_validate(task, from_attributes=True)
 
 
+@router.delete("/tasks/{task_id}", status_code=204)
+def delete_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Удалить задачу. Доступно участникам мероприятия."""
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    _ensure_event_member(db, current_user.id, task.event_id)
+
+    db.delete(task)
+    db.commit()
+    return None
+
+
 @router.get("/events/{event_id}/progress", response_model=ProgressOut)
 def event_progress(
     event_id: str,

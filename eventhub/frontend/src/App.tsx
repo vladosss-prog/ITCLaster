@@ -10,7 +10,7 @@ import {
 } from "react-router-dom";
 import "./App.css";
 import { authAPI, eventsAPI, tasksAPI, participantsAPI } from "./api/apiClient";
-import type { User, Task, TaskStatus } from "./api/apiClient";
+import type { User, Task, TaskStatus, CalendarItem } from "./api/apiClient";
 import { ScheduleTab } from "./components/dashboard/ScheduleTab";
 import { MyReportTab } from "./components/dashboard/MyReportTab";
 import { ReportPage } from "./pages/ReportPage";
@@ -374,7 +374,7 @@ const LandingPage = ({ demoMode }: { demoMode: boolean }) => {
 
   useEffect(() => {
     if (demoMode) { setEvents(DEMO_EVENTS); setLoading(false); return; }
-    eventsAPI.getAll()
+    eventsAPI.getPublic()
       .then(res => setEvents(res.data as EventItem[]))
       .catch(() => setEvents([]))
       .finally(() => setLoading(false));
@@ -436,7 +436,7 @@ const EventsPage = ({ demoMode }: { demoMode: boolean }) => {
 
   useEffect(() => {
     if (demoMode) { setEvents(DEMO_EVENTS); setLoading(false); return; }
-    eventsAPI.getAll()
+    eventsAPI.getPublic()
       .then(res => setEvents(res.data as EventItem[]))
       .catch(() => setEvents([]))
       .finally(() => setLoading(false));
@@ -748,7 +748,19 @@ const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogo
       tasksAPI.getCalendar(),
     ])
       .then(([calRes]) => {
-        setCalendarEntries(calRes.data || []);
+        const mapped: CalendarEntry[] = ((calRes.data || []) as CalendarItem[]).map(item => {
+          const d = new Date(item.start);
+          return {
+            id: item.id,
+            title: item.title,
+            type: item.type === "event" ? "EVENT" as const : "TASK" as const,
+            day: d.getDate(),
+            month: d.getMonth(),
+            year: d.getFullYear(),
+            status: item.type === "task" ? "TODO" as TaskStatus : undefined,
+          };
+        });
+        setCalendarEntries(mapped);
         setTasks([]);
       })
       .catch(() => { setCalendarEntries([]); setTasks([]); })
@@ -870,7 +882,19 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
       .then(async ([evRes, calRes]) => {
         const eventsData = evRes.data as EventItem[];
         setEvents(eventsData);
-        setCalendarEntries(calRes.data || []);
+        const mapped: CalendarEntry[] = ((calRes.data || []) as CalendarItem[]).map(item => {
+          const d = new Date(item.start);
+          return {
+            id: item.id,
+            title: item.title,
+            type: item.type === "event" ? "EVENT" as const : "TASK" as const,
+            day: d.getDate(),
+            month: d.getMonth(),
+            year: d.getFullYear(),
+            status: item.type === "task" ? "TODO" as TaskStatus : undefined,
+          };
+        });
+        setCalendarEntries(mapped);
         if (eventsData.length > 0) {
           const taskRes = await tasksAPI.getByEvent(eventsData[0].id);
           setTasks(taskRes.data);
@@ -1056,12 +1080,12 @@ export default function App() {
                   : <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
                 : <Navigate to="/login" />
             } />
-            <Route path="*" element={<PlaceholderPage title="Страница не найдена" icon="🔍" />} />
             <Route path="/manage/events/:id" element={
-            user?.global_role === "ORGANIZER"
-            ? <EventManagePage demoMode={demoMode} />
-            : <Navigate to="/dashboard" />
+              user?.global_role === "ORGANIZER"
+                ? <EventManagePage demoMode={demoMode} />
+                : <Navigate to="/dashboard" />
             } />
+            <Route path="*" element={<PlaceholderPage title="Страница не найдена" icon="🔍" />} />
           </Routes>
         </div>
         <SiteFooter />

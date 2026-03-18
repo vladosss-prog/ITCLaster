@@ -111,20 +111,11 @@ export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?
       return;
     }
 
-    chatAPI
-      .getMessages(activeRoomId, { limit: 50, offset: 0 })
-      .then((res) => {
-        const page = res.data as ChatMessagesPage;
-        setMessages(page.items || []);
-        setTimeout(scrollToBottom, 0);
-      })
-      .catch((e) => setMessagesError(e?.response?.data?.detail || e?.message || "Не удалось загрузить сообщения"))
-      .finally(() => setLoadingMessages(false));
-
-    // WS: history + message events
+    // WS подключение: history приходит автоматически при connect
     const ws = createChatSocket(activeRoomId, (ev: ChatSocketEvent) => {
       if (ev.type === "history") {
         setMessages(ev.items || []);
+        setLoadingMessages(false);
         setTimeout(scrollToBottom, 0);
         return;
       }
@@ -135,11 +126,27 @@ export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?
       }
       if (ev.type === "error") {
         setMessagesError(ev.detail || "Ошибка WebSocket");
+        setLoadingMessages(false);
       }
     });
     wsRef.current = ws;
 
+    // Fallback: если WS не отправит history за 3 сек — загружаем через REST
+    const fallbackTimer = setTimeout(() => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN) {
+        chatAPI
+          .getMessages(activeRoomId, { limit: 50, offset: 0 })
+          .then((res) => {
+            setMessages((res.data as ChatMessagesPage).items || []);
+            setTimeout(scrollToBottom, 0);
+          })
+          .catch((e) => setMessagesError(e?.response?.data?.detail || e?.message || "Не удалось загрузить сообщения"))
+          .finally(() => setLoadingMessages(false));
+      }
+    }, 3000);
+
     return () => {
+      clearTimeout(fallbackTimer);
       try {
         ws.close();
       } catch {

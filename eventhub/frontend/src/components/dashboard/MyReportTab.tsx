@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { PresentationFormat, Report, User } from "../../api/apiClient";
 import { reportsAPI } from "../../api/apiClient";
 import { Spinner } from "../ui/Spinner";
@@ -25,6 +25,7 @@ interface Props {
 
 export function MyReportTab({ user, demoMode }: Props) {
   const [report, setReport] = useState<Report | null>(demoMode ? DEMO_REPORT : null);
+  const [loading, setLoading] = useState(!demoMode);
   const [bio, setBio] = useState(user.bio ?? "");
   const [photoUrl, setPhotoUrl] = useState(user.photo_url ?? "");
   const [confirmed, setConfirmed] = useState(report?.speaker_confirmed ?? false);
@@ -33,6 +34,25 @@ export function MyReportTab({ user, demoMode }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Загружаем доклады спикера из бэка
+  useEffect(() => {
+    if (demoMode) return;
+    setLoading(true);
+    reportsAPI
+      .getMy()
+      .then((res) => {
+        const reports = res.data || [];
+        if (reports.length > 0) {
+          const r = reports[0];
+          setReport(r);
+          setConfirmed(r.speaker_confirmed);
+          setFormat(r.presentation_format ?? "");
+        }
+      })
+      .catch((e) => setError(e?.response?.data?.detail || e?.message || "Не удалось загрузить доклад"))
+      .finally(() => setLoading(false));
+  }, [demoMode]);
 
   const handleSave = async () => {
     if (!report) return;
@@ -66,12 +86,16 @@ export function MyReportTab({ user, demoMode }: Props) {
     }
   };
 
+  if (loading) {
+    return <Spinner label="Загружаем данные доклада..." />;
+  }
+
   if (!demoMode && !report) {
     return (
       <EmptyState
         icon="🎤"
-        title="Доклад спикера пока не подключён"
-        description="Бэкенд ещё не предоставляет эндпоинт для получения «моего» доклада. Как только он появится, вкладка будет использовать PATCH /api/reports/{id} для сохранения полей спикера."
+        title="У вас пока нет назначенных докладов"
+        description="Когда организатор назначит вас спикером на доклад, он появится здесь."
       />
     );
   }
