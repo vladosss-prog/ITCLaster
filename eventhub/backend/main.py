@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from routers import tasks
 
 from routers import auth, chat, events, participants, tasks
 from routers.events import reports_router, sections_router, users_router

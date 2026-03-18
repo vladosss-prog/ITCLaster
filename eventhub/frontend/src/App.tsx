@@ -11,6 +11,11 @@ import {
 import "./App.css";
 import { authAPI, eventsAPI, tasksAPI, participantsAPI } from "./api/apiClient";
 import type { User, Task, TaskStatus } from "./api/apiClient";
+import { ScheduleTab } from "./components/dashboard/ScheduleTab";
+import { MyReportTab } from "./components/dashboard/MyReportTab";
+import { ReportPage } from "./pages/ReportPage";
+import { Messenger } from "./components/messenger/Messenger";
+import { EventManagePage } from "./pages/EventManagePage";
 
 // -----------------------------------------------------------
 // ТИПЫ
@@ -467,9 +472,11 @@ const EventPage = ({ user, demoMode }: { user: User | null; demoMode: boolean })
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [event, setEvent] = useState<EventItem | null>(null);
-  const [program, setProgram] = useState<any[]>([]);
+  const [program, setProgram] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [registered, setRegistered] = useState(false);
+  const [addLoadingId, setAddLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -480,13 +487,36 @@ const EventPage = ({ user, demoMode }: { user: User | null; demoMode: boolean })
       return;
     }
     Promise.all([eventsAPI.getOne(id), participantsAPI.getProgram(id)])
-      .then(([eRes, pRes]) => { setEvent(eRes.data as EventItem); setProgram(pRes.data || []); })
+      .then(([eRes, pRes]) => {
+        setEvent(eRes.data as EventItem);
+        setProgram(pRes.data || null);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id, demoMode]);
 
   if (loading) return <LoadingScreen />;
   if (!event) return <PlaceholderPage title="Мероприятие не найдено" icon="🔍" />;
+
+  const handleAddToSchedule = async (reportId: string) => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    if (demoMode) {
+      // В demo режиме не ходим на бэкенд.
+      return;
+    }
+    setAddLoadingId(reportId);
+    setError("");
+    try {
+      await participantsAPI.addToSchedule(reportId);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || "Не удалось добавить в расписание");
+    } finally {
+      setAddLoadingId(null);
+    }
+  };
 
   return (
     <div style={{ padding: "40px 0" }}>
@@ -512,22 +542,98 @@ const EventPage = ({ user, demoMode }: { user: User | null; demoMode: boolean })
           )}
         </div>
 
-        {program.length > 0 && (
-          <div style={{ marginTop: 40 }}>
-            <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Программа</h2>
-            <div className="row g-3">
-              {program.map((item: any) => (
-                <div key={item.id} className="col-md-6">
-                  <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 2px 10px rgba(0,0,0,0.05)", borderLeft: "4px solid var(--primary)" }}>
-                    <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, marginBottom: 6 }}>{item.start_time}</div>
-                    <h5 style={{ margin: "0 0 6px", fontWeight: 700 }}>{item.title}</h5>
-                    <p style={{ color: "#777", fontSize: 13, margin: 0 }}>{item.description}</p>
-                  </div>
-                </div>
-              ))}
+        {error && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 6, fontSize: 14 }}>
+              {error}
             </div>
           </div>
         )}
+
+        {Array.isArray(program) ? program.length > 0 : (program?.sections?.length || 0) > 0 ? (
+          <div style={{ marginTop: 40 }}>
+            <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Программа</h2>
+            <div style={{ display: "grid", gap: 14 }}>
+              {Array.isArray(program)
+                ? program.map((item: any) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        background: "white",
+                        borderRadius: 12,
+                        padding: 20,
+                        boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+                        borderLeft: "4px solid var(--primary)",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, marginBottom: 6 }}>{item.start_time}</div>
+                      <h5 style={{ margin: "0 0 6px", fontWeight: 700 }}>{item.title}</h5>
+                      <p style={{ color: "#777", fontSize: 13, margin: 0 }}>{item.description}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleAddToSchedule(item.id)}
+                        style={{
+                          marginTop: 10,
+                          padding: "8px 14px",
+                          borderRadius: 999,
+                          border: "none",
+                          background: "var(--primary)",
+                          color: "white",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Добавить в расписание
+                      </button>
+                    </div>
+                  ))
+                : (program?.sections || []).map((section: any) => (
+                    <div key={section.id} style={{ background: "white", borderRadius: 16, padding: 18, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+                      <div style={{ fontWeight: 900, marginBottom: 6 }}>{section.title}</div>
+                      <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>
+                        {section.location ? `📍 ${section.location}` : "📍 —"}
+                        {section.format ? ` · ${section.format}` : ""}
+                      </div>
+                      <div className="row g-3">
+                        {(section.reports || []).map((r: any) => (
+                          <div key={r.id} className="col-md-6">
+                            <div style={{ background: "#f8fafc", borderRadius: 12, padding: 14, border: "1px solid var(--border)" }}>
+                              <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 6 }}>
+                                {r.start_time ? new Date(r.start_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                {r.end_time ? `–${new Date(r.end_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                              </div>
+                              <div style={{ fontWeight: 900, marginBottom: 6 }}>{r.title}</div>
+                              <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>
+                                {r.speaker_name ? `🎤 ${r.speaker_name}` : "🎤 —"}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleAddToSchedule(r.id)}
+                                style={{
+                                  marginTop: 10,
+                                  padding: "8px 14px",
+                                  borderRadius: 999,
+                                  border: "none",
+                                  background: "var(--primary)",
+                                  color: "white",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  cursor: addLoadingId === r.id ? "wait" : "pointer",
+                                  opacity: addLoadingId === r.id ? 0.7 : 1,
+                                }}
+                              >
+                                {addLoadingId === r.id ? "Добавляем..." : "Добавить в расписание"}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -626,7 +732,7 @@ const AuthPage = ({ onLogin }: { onLogin: (u: User, demo: boolean) => void }) =>
 const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout: () => void; demoMode: boolean }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<"calendar" | "kanban" | "settings">("calendar");
+  const [activeTab, setActiveTab] = useState<"calendar" | "schedule" | "myReport" | "messenger" | "kanban" | "settings">("calendar");
   const [viewDate, setViewDate] = useState(new Date(2026, 2, 17));
   const [loading, setLoading] = useState(true);
 
@@ -638,14 +744,12 @@ const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogo
       return;
     }
     // Бек 4: GET /api/events/calendar
-    // Бек 5: GET /api/schedule/my → задачи участника
     Promise.all([
       tasksAPI.getCalendar(),
-      participantsAPI.getMySchedule(),
     ])
-      .then(([calRes, schedRes]) => {
+      .then(([calRes]) => {
         setCalendarEntries(calRes.data || []);
-        setTasks((schedRes.data as unknown as Task[]) || []);
+        setTasks([]);
       })
       .catch(() => { setCalendarEntries([]); setTasks([]); })
       .finally(() => setLoading(false));
@@ -661,6 +765,9 @@ const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogo
 
   const navItems = [
     { id: "calendar", icon: "📅", label: "Календарь" },
+    { id: "schedule", icon: "🗓️", label: "Расписание" },
+    { id: "myReport", icon: "🎤", label: "Мой доклад" },
+    { id: "messenger", icon: "💬", label: "Чаты" },
     { id: "kanban", icon: "📋", label: "Мои задачи" },
     { id: "settings", icon: "⚙️", label: "Настройки" },
   ];
@@ -712,6 +819,9 @@ const ParticipantDashboard = ({ user, onLogout, demoMode }: { user: User; onLogo
                 <KanbanView tasks={tasks} onUpdateStatus={handleUpdateStatus} showProgress={false} />
               </div>
             )}
+            {activeTab === "schedule" && <ScheduleTab demoMode={demoMode} />}
+            {activeTab === "myReport" && <MyReportTab user={user} demoMode={demoMode} />}
+            {activeTab === "messenger" && <Messenger demoMode={demoMode} myUserId={user.id} />}
             {activeTab === "settings" && (
               <div>
                 <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Настройки профиля</h2>
@@ -741,7 +851,7 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<"calendar" | "events" | "kanban" | "settings">("calendar");
+  const [activeTab, setActiveTab] = useState<"calendar" | "messenger" | "events" | "kanban" | "settings">("calendar");
   const [viewDate, setViewDate] = useState(new Date(2026, 2, 17));
   const [loading, setLoading] = useState(true);
 
@@ -780,6 +890,7 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
 
   const navItems = [
     { id: "calendar", icon: "📅", label: "Календарь" },
+    { id: "messenger", icon: "💬", label: "Чаты" },
     { id: "events", icon: "🗂️", label: "Мероприятия" },
     { id: "kanban", icon: "📋", label: "Канбан задач" },
     { id: "settings", icon: "⚙️", label: "Настройки" },
@@ -867,6 +978,8 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
               </div>
             )}
 
+            {activeTab === "messenger" && <Messenger demoMode={demoMode} myUserId={user.id} />}
+
             {/* КАНБАН с прогрессом */}
             {activeTab === "kanban" && (
               <div>
@@ -932,6 +1045,7 @@ export default function App() {
             <Route path="/contacts" element={<PlaceholderPage title="Контакты" icon="📞" />} />
             <Route path="/events" element={<EventsPage demoMode={demoMode} />} />
             <Route path="/events/:id" element={<EventPage user={user} demoMode={demoMode} />} />
+            <Route path="/reports/:id" element={<ReportPage demoMode={demoMode} />} />
             <Route path="/login" element={
               user ? <Navigate to="/dashboard" /> : <AuthPage onLogin={handleLogin} />
             } />
@@ -943,6 +1057,11 @@ export default function App() {
                 : <Navigate to="/login" />
             } />
             <Route path="*" element={<PlaceholderPage title="Страница не найдена" icon="🔍" />} />
+            <Route path="/manage/events/:id" element={
+            user?.global_role === "ORGANIZER"
+            ? <EventManagePage demoMode={demoMode} />
+            : <Navigate to="/dashboard" />
+            } />
           </Routes>
         </div>
         <SiteFooter />
