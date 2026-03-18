@@ -8,7 +8,12 @@ function _secFetch(method: string, path: string, body?: any) {
   const t = localStorage.getItem("access_token") || "";
   const headers: Record<string,string> = { "Content-Type": "application/json" };
   if (t) headers["Authorization"] = "Bearer " + t;
-  return fetch(API_BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  return fetch(API_BASE + path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",   // отключаем кэш браузера для всех запросов
+  });
 }
 // -----------------------------------------------------------
 // ТИПЫ
@@ -454,22 +459,29 @@ const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean
     if (demoMode) { setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await eventsAPI.getSections(eventId);
-      const secs: Section[] = res.data || [];
+      // Используем _secFetch напрямую (без axios-кэша)
+      const secRes = await _secFetch("GET", `/api/events/${eventId}/sections`);
+      if (!secRes.ok) { setLoading(false); return; }
+      const secs: Section[] = await secRes.json();
       setSections(secs);
 
-      // Load reports for each section in parallel
+      // Загружаем доклады для каждой секции последовательно
       const recs: Record<string, Report[]> = {};
-      await Promise.all(secs.map(async (s: Section) => {
+      for (const s of secs) {
         try {
           const r = await _secFetch("GET", `/api/sections/${s.id}/reports`);
-          recs[s.id] = r.ok ? await r.json() : [];
-        } catch { recs[s.id] = []; }
-      }));
-      setReports(recs);
+          const data = r.ok ? await r.json() : [];
+          recs[s.id] = Array.isArray(data) ? data : [];
+          console.log(`[SectionsTab] section ${s.id} reports:`, recs[s.id].length, recs[s.id]);
+        } catch (e) {
+          console.error(`[SectionsTab] failed to load reports for section ${s.id}:`, e);
+          recs[s.id] = [];
+        }
+      }
+      console.log("[SectionsTab] all reports loaded:", recs);
+      setReports({ ...recs });
 
-      // Загружаем имена всех пользователей для резолва curator_id → имя
-      // speaker_name теперь приходит прямо из бэкенда в ReportOut
+      // Загружаем имена пользователей для curator_id → имя
       try {
         const ur = await _secFetch("GET", "/api/users/search?q=");
         if (ur.ok) {
@@ -479,7 +491,9 @@ const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean
           setUsersMap(map);
         }
       } catch {}
-    } catch {}
+    } catch (e) {
+      console.error("reload error:", e);
+    }
     finally { setLoading(false); }
   };
 
