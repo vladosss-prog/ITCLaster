@@ -817,7 +817,7 @@ interface DemoMembership {
   report_id?: string;
 }
 
-const DEMO_MEMBERSHIPS: DemoMembership[] = [
+const DEMO_MEMBERSHIPS_INIT: DemoMembership[] = [
   { user_id: "u3", event_id: "e1", context_role: "CURATOR", section_id: "s1" },
   { user_id: "u3", event_id: "e2", context_role: "CURATOR", section_id: "s3" },
   { user_id: "u4", event_id: "e1", context_role: "SPEAKER", section_id: "s1", report_id: "r1" },
@@ -825,13 +825,11 @@ const DEMO_MEMBERSHIPS: DemoMembership[] = [
   { user_id: "u2", event_id: "e2", context_role: "PARTICIPANT" },
 ];
 
-// Определить лучшую роль пользователя по всем мероприятиям
-function getBestDemoRole(userId: string): "ORGANIZER" | "CURATOR" | "SPEAKER" | "PARTICIPANT" {
-  const user = Object.values(DEMO_USERS).find((u) => u.id === userId);
-  if (user?.global_role === "ORGANIZER") return "ORGANIZER";
-  const memberships = DEMO_MEMBERSHIPS.filter((m) => m.user_id === userId);
-  if (memberships.some((m) => m.context_role === "CURATOR")) return "CURATOR";
-  if (memberships.some((m) => m.context_role === "SPEAKER")) return "SPEAKER";
+// Определить лучшую роль пользователя по memberships
+function getBestRole(userId: string, memberships: DemoMembership[], globalRole?: string): "ORGANIZER" | "CURATOR" | "SPEAKER" | "PARTICIPANT" {
+  if (globalRole === "ORGANIZER") return "ORGANIZER";
+  if (memberships.some((m) => m.user_id === userId && m.context_role === "CURATOR")) return "CURATOR";
+  if (memberships.some((m) => m.user_id === userId && m.context_role === "SPEAKER")) return "SPEAKER";
   return "PARTICIPANT";
 }
 
@@ -2017,10 +2015,14 @@ function OrganizerDashboard({
   user,
   onLogout,
   demoMode,
+  memberships,
+  setMemberships,
 }: {
   user: User;
   onLogout: () => void;
   demoMode: boolean;
+  memberships: DemoMembership[];
+  setMemberships: React.Dispatch<React.SetStateAction<DemoMembership[]>>;
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"events" | "kanban" | "calendar" | "chat" | "settings">("events");
@@ -2045,10 +2047,24 @@ function OrganizerDashboard({
   const assignCurator = (userId: string, eventId: string) => {
     const u = DEMO_ALL_USERS.find((u) => u.id === userId);
     if (!u) return;
-    // Добавляем membership
-    DEMO_MEMBERSHIPS.push({ user_id: userId, event_id: eventId, context_role: "CURATOR" });
+    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
+    if (!demoMode) {
+      apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }).catch(() => {});
+    }
     setShowAssignCurator("");
     setCuratorSearch("");
+  };
+
+  // --- Назначить спикера (орг тоже может) ---
+  const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
+  const [speakerSearch, setSpeakerSearch] = useState("");
+  const assignSpeakerOrg = (userId: string, eventId: string) => {
+    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
+    if (!demoMode) {
+      apiFetch("POST", `/api/reports/0/speaker`, { user_id: userId }).catch(() => {});
+    }
+    setShowAssignSpeaker("");
+    setSpeakerSearch("");
   };
 
   // --- Загрузка данных ---
@@ -2272,6 +2288,25 @@ function OrganizerDashboard({
                                 ))}
                               </div>
                             )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setShowAssignSpeaker(showAssignSpeaker === ev.id ? "" : ev.id); }}
+                              style={{ marginTop: 4, padding: "5px 14px", background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                            >
+                              🎤 Назначить спикера
+                            </button>
+                            {showAssignSpeaker === ev.id && (
+                              <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
+                                <input type="text" placeholder="Поиск по ФИО..." value={speakerSearch} onChange={(e) => setSpeakerSearch(e.target.value)}
+                                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
+                                {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(speakerSearch.toLowerCase())).map((u) => (
+                                  <div key={u.id} onClick={() => assignSpeakerOrg(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}
+                                    onMouseOver={(e) => e.currentTarget.style.background = "#fffbeb"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
+                                    <span>{u.full_name}</span>
+                                    <span style={{ color: "#d97706", fontSize: 11 }}>Назначить</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           <div style={{ textAlign: "center", minWidth: 70, flexShrink: 0 }}>
                             <div style={{ fontSize: 28, fontWeight: 900, color: p >= 75 ? "#16a34a" : p >= 40 ? "#d97706" : "var(--primary)" }}>{p}%</div>
@@ -2417,13 +2452,17 @@ function ParticipantDashboard({
   user,
   onLogout,
   demoMode,
+  memberships,
+  setMemberships,
 }: {
   user: User;
   onLogout: () => void;
   demoMode: boolean;
+  memberships: DemoMembership[];
+  setMemberships: React.Dispatch<React.SetStateAction<DemoMembership[]>>;
 }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"program" | "kanban" | "schedule" | "chat" | "settings">("program");
+  const [tab, setTab] = useState<"program" | "sections" | "kanban" | "schedule" | "chat" | "settings">("program");
   const [events, setEvents] = useState<EventData[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2433,15 +2472,13 @@ function ParticipantDashboard({
   const [newDue, setNewDue] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
 
-  // Определяем лучшую роль пользователя
-  const bestRole = demoMode ? getBestDemoRole(user.id) : "PARTICIPANT";
+  // Определяем лучшую роль пользователя из РЕАКТИВНЫХ memberships
+  const bestRole = getBestRole(user.id, memberships, user.global_role);
   const isCurator = bestRole === "CURATOR";
   const isSpeaker = bestRole === "SPEAKER";
 
   // Мероприятия где пользователь куратор
-  const curatorEventIds = demoMode
-    ? DEMO_MEMBERSHIPS.filter((m) => m.user_id === user.id && m.context_role === "CURATOR").map((m) => m.event_id)
-    : [];
+  const curatorEventIds = memberships.filter((m) => m.user_id === user.id && m.context_role === "CURATOR").map((m) => m.event_id);
 
   useEffect(() => {
     setLoading(true);
@@ -2538,7 +2575,10 @@ function ParticipantDashboard({
   const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
   const [speakerSearch, setSpeakerSearch] = useState("");
   const assignSpeaker = (userId: string, eventId: string) => {
-    DEMO_MEMBERSHIPS.push({ user_id: userId, event_id: eventId, context_role: "SPEAKER" });
+    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
+    if (!demoMode) {
+      apiFetch("POST", `/api/reports/0/speaker`, { user_id: userId }).catch(() => {});
+    }
     setShowAssignSpeaker("");
     setSpeakerSearch("");
   };
@@ -2547,8 +2587,9 @@ function ParticipantDashboard({
   const roleColor = isCurator ? "#6b7280" : isSpeaker ? "#d97706" : "#16a34a";
   const roleBg = isCurator ? "#f3f4f6" : isSpeaker ? "#fffbeb" : "#f0fdf4";
 
-  const navItems = [
+  const navItems: { id: string; icon: string; label: string }[] = [
     { id: "program", icon: "📋", label: "Программа" },
+    ...(isCurator ? [{ id: "sections", icon: "🗂️", label: "Мои секции" }] : []),
     { id: "kanban", icon: "📌", label: "Канбан задач" },
     { id: "schedule", icon: "📅", label: "Моё расписание" },
     { id: "chat", icon: "💬", label: "Чат" },
@@ -2582,44 +2623,87 @@ function ParticipantDashboard({
         {loading ? <Spinner /> : (
           <>
             {tab === "program" && (
+              <ProgramTab
+                events={events}
+                regs={regs}
+                onRegister={register}
+                demoMode={demoMode}
+                userId={user.id}
+              />
+            )}
+
+            {/* ═══ TAB: МОИ СЕКЦИИ (только куратор) ═══ */}
+            {tab === "sections" && isCurator && (
               <div>
-                <ProgramTab
-                  events={events}
-                  regs={regs}
-                  onRegister={register}
-                  demoMode={demoMode}
-                  userId={user.id}
-                />
-                {/* Куратор: назначение спикеров */}
-                {isCurator && (
-                  <div style={{ marginTop: 24 }}>
-                    <h2 style={{ fontWeight: 900, fontSize: 18, color: "var(--primary-dark)", marginBottom: 12 }}>📋 Управление секцией</h2>
-                    {events.filter((e) => curatorEventIds.includes(e.id)).map((ev) => (
-                      <div key={ev.id} style={{ background: "white", borderRadius: 14, padding: "16px 20px", border: "1.5px solid var(--border)", marginBottom: 12 }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)", marginBottom: 8 }}>{ev.title}</div>
-                        <button
-                          onClick={() => setShowAssignSpeaker(showAssignSpeaker === ev.id ? "" : ev.id)}
-                          style={{ padding: "6px 14px", background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
-                        >
-                          🎤 Назначить спикера
-                        </button>
-                        {showAssignSpeaker === ev.id && (
-                          <div style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
-                            <input type="text" placeholder="Поиск по ФИО..." value={speakerSearch} onChange={(e) => setSpeakerSearch(e.target.value)}
-                              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
-                            {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(speakerSearch.toLowerCase())).map((u) => (
-                              <div key={u.id} onClick={() => assignSpeaker(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}
-                                onMouseOver={(e) => e.currentTarget.style.background = "#fffbeb"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
-                                <span>{u.full_name}</span>
-                                <span style={{ color: "#d97706", fontSize: 11 }}>Назначить спикером</span>
-                              </div>
-                            ))}
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>🗂️ Мои секции</h1>
+                {events.filter((e) => curatorEventIds.includes(e.id)).map((ev) => {
+                  const evSections = (DEMO_SECTIONS_PROGRAM[ev.id] || []);
+                  const evSpeakers = memberships.filter((m) => m.event_id === ev.id && m.context_role === "SPEAKER");
+                  return (
+                    <div key={ev.id} style={{ marginBottom: 24 }}>
+                      <h2 style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 12 }}>{ev.title}</h2>
+                      {evSections.map((sec: any) => (
+                        <div key={sec.id} style={{ background: "white", borderRadius: 14, padding: "18px 22px", border: "1.5px solid var(--border)", marginBottom: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary)" }}>📌 {sec.title}</div>
+                              {sec.location && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>📍 {sec.location} · {sec.format || "—"}</div>}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+
+                          {/* Доклады секции */}
+                          {(sec.reports || []).length > 0 && (
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>Доклады</div>
+                              {sec.reports.map((r: any) => (
+                                <div key={r.id} style={{ padding: "8px 12px", background: "var(--bg-light)", borderRadius: 8, marginBottom: 4, fontSize: 13 }}>
+                                  <span style={{ fontWeight: 700, color: "var(--primary-dark)" }}>{r.title}</span>
+                                  {r.speaker_name && <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>🎤 {r.speaker_name}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Назначенные спикеры */}
+                          {evSpeakers.length > 0 && (
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>Назначенные спикеры</div>
+                              {evSpeakers.map((sp, i) => {
+                                const spUser = DEMO_ALL_USERS.find((u) => u.id === sp.user_id);
+                                return spUser ? (
+                                  <div key={i} style={{ padding: "6px 10px", background: "#fffbeb", borderRadius: 6, marginBottom: 3, fontSize: 12, fontWeight: 600, color: "#92400e", display: "inline-block", marginRight: 6 }}>
+                                    🎤 {spUser.full_name}
+                                  </div>
+                                ) : null;
+                              })}
+                            </div>
+                          )}
+
+                          {/* Назначить спикера */}
+                          <button
+                            onClick={() => setShowAssignSpeaker(showAssignSpeaker === `${ev.id}-${sec.id}` ? "" : `${ev.id}-${sec.id}`)}
+                            style={{ padding: "7px 16px", background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                          >
+                            🎤 Назначить спикера
+                          </button>
+                          {showAssignSpeaker === `${ev.id}-${sec.id}` && (
+                            <div style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
+                              <input type="text" placeholder="Поиск по ФИО..." value={speakerSearch} onChange={(e) => setSpeakerSearch(e.target.value)}
+                                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
+                              {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(speakerSearch.toLowerCase())).map((u) => (
+                                <div key={u.id} onClick={() => assignSpeaker(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}
+                                  onMouseOver={(e) => e.currentTarget.style.background = "#fffbeb"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
+                                  <span>{u.full_name}</span>
+                                  <span style={{ color: "#d97706", fontSize: 11 }}>Назначить</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -3030,6 +3114,7 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [initLoading, setInitLoading] = useState(true);
+  const [memberships, setMemberships] = useState<DemoMembership[]>([...DEMO_MEMBERSHIPS_INIT]);
 
   useEffect(() => {
     injectGlobalCSS();
@@ -3167,9 +3252,9 @@ function AppContent() {
         element={
           user ? (
             user.global_role === "ORGANIZER" ? (
-              <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
+              <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} />
             ) : (
-              <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
+              <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} />
             )
           ) : (
             <Navigate to="/login" />
