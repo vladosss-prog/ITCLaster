@@ -65,6 +65,19 @@ def get_current_user(
     return _get_current_user(db=db, authorization=authorization)
 
 
+def get_current_user_optional(
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> Optional[User]:
+    """Возвращает User если токен валиден, None если нет токена."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return _get_current_user(db=db, authorization=authorization)
+    except Exception:
+        return None
+
+
 class UserOut(BaseModel):
     id: str
     email: EmailStr

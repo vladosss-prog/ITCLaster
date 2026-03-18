@@ -21,6 +21,7 @@ from models import (
     UserReportSchedule,
 )
 from routers.auth import get_current_user
+from routers.chat import add_user_to_event_chat
 
 router = APIRouter()
 
@@ -198,6 +199,11 @@ def register_on_event(
     )
     db.add(membership)
     db.commit()
+
+    # Участник автоматически получает доступ к GROUP-чату мероприятия
+    # (чат создаётся если его ещё нет)
+    add_user_to_event_chat(id, db)
+
     return RegistrationOut(event_id=id, user_id=current_user.id, role="PARTICIPANT", status="registered")
 
 

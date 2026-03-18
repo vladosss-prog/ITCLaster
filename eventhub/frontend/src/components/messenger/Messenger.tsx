@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { chatAPI, createChatSocket, usersAPI } from "../../api/apiClient";
-import type { ChatMessage, ChatMessagesPage, ChatRoom, ChatSocketEvent, User } from "../../api/apiClient";
+import { chatAPI, createChatSocket, usersAPI, eventsAPI } from "../../api/apiClient";
+import type { ChatMessage, ChatMessagesPage, ChatRoom, ChatSocketEvent, User, EventData } from "../../api/apiClient";
 import { ErrorBlock } from "../ui/ErrorBlock";
 import { EmptyState } from "../ui/EmptyState";
 import { Spinner } from "../ui/Spinner";
@@ -40,6 +40,7 @@ function roomTitle(room: ChatRoom): ChatRoomWithUi {
 export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?: string }) {
   const [rooms, setRooms] = useState<ChatRoomWithUi[]>([]);
   const [activeRoomId, setActiveRoomId] = useState<string>("");
+  const [eventNames, setEventNames] = useState<Record<string, string>>({});
 
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [roomsError, setRoomsError] = useState<string>("");
@@ -106,8 +107,27 @@ export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?
     }
     chatAPI
       .getMy()
-      .then((res) => {
-        const list = (res.data || []).map(roomTitle);
+      .then(async (res) => {
+        const rawRooms = res.data || [];
+        // Подгружаем имена мероприятий для GROUP-чатов
+        const eventIds = [...new Set(rawRooms.filter(r => r.type === "GROUP" && r.event_id).map(r => r.event_id!))];
+        let names: Record<string, string> = {};
+        if (eventIds.length > 0) {
+          try {
+            const evRes = await eventsAPI.getAll();
+            for (const ev of (evRes.data || [])) {
+              names[ev.id] = ev.title;
+            }
+          } catch { /* ignore */ }
+        }
+        setEventNames(names);
+        const list = rawRooms.map(room => {
+          if (room.type === "GROUP") {
+            const eventName = room.event_id ? names[room.event_id] : null;
+            return { ...room, title: eventName || (room.event_id ? `Чат мероприятия` : "Групповой чат"), subtitle: "Групповой чат" };
+          }
+          return { ...room, title: `Личный чат ${room.id.slice(0, 6)}`, subtitle: "Direct" };
+        });
         setRooms(list);
         setActiveRoomId((prev) => prev || list[0]?.id || "");
       })

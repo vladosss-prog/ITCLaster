@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Event, EventMembership, Report, Section, User
-from routers.auth import get_current_user
+from routers.auth import get_current_user, get_current_user_optional
+from routers.chat import add_user_to_event_chat
 
 
 router = APIRouter()
@@ -183,6 +184,9 @@ def create_event(
     db.commit()
     db.refresh(event)
 
+    # Автоматически создаём GROUP-чат для мероприятия
+    add_user_to_event_chat(event.id, db)
+
     return EventOut.model_validate(event, from_attributes=True)
 
 
@@ -232,12 +236,20 @@ def list_events_public(
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(
     event_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> EventOut:
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    # PUBLISHED мероприятия доступны всем
+    if event.status == "PUBLISHED":
+        return EventOut.model_validate(event, from_attributes=True)
+
+    # Для DRAFT/FINISHED нужна авторизация и членство
+    if not current_user:
+        raise HTTPException(status_code=403, detail="Нет доступа к мероприятию")
 
     membership_stmt = select(EventMembership.id).where(
         EventMembership.user_id == current_user.id,

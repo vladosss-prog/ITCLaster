@@ -1064,6 +1064,7 @@ const CreateEventModal = ({
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [publishNow, setPublishNow] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1072,7 +1073,11 @@ const CreateEventModal = ({
     setSaving(true); setError("");
     if (demoMode) { onCreated(); return; }
     try {
-      await eventsAPI.create({ title: title.trim(), description: description || undefined, start_date: startDate || undefined, end_date: endDate || undefined } as any);
+      const res = await eventsAPI.create({ title: title.trim(), description: description || undefined, start_date: startDate || undefined, end_date: endDate || undefined } as any);
+      // Если выбрано "Опубликовать" — сразу меняем статус
+      if (publishNow && res.data?.id) {
+        await eventsAPI.update(res.data.id, { status: "PUBLISHED" } as any);
+      }
       onCreated();
     } catch (e: any) {
       setError(e?.response?.data?.detail || e?.message || "Не удалось создать мероприятие");
@@ -1107,6 +1112,10 @@ const CreateEventModal = ({
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }} />
           </div>
         </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 16, cursor: "pointer" }}>
+          <input type="checkbox" checked={publishNow} onChange={e => setPublishNow(e.target.checked)} />
+          Опубликовать сразу (видно на странице мероприятий)
+        </label>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={handleCreate} disabled={saving} style={{ flex: 1, padding: 12, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
             {saving ? "Создание..." : "СОЗДАТЬ"}
