@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -17,6 +18,9 @@ router = APIRouter()
 users_router = APIRouter()
 sections_router = APIRouter()
 reports_router = APIRouter()
+
+
+# ---------- Schemas ----------
 
 
 class EventCreateIn(BaseModel):
@@ -57,6 +61,8 @@ class SectionOut(BaseModel):
     location: Optional[str] = None
     section_start: Optional[datetime] = None
     section_end: Optional[datetime] = None
+    moderator_id: Optional[str] = None       # Fix #23: добавлено
+    tech_notes: Optional[str] = None          # Fix #23: добавлено
     readiness_percent: int
 
     class Config:
@@ -121,6 +127,17 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
+# ---------- Helpers ----------
+
+
+def _escape_like(value: str) -> str:
+    """Экранировать спецсимволы LIKE/ILIKE (%, _)."""
+    return re.sub(r"([%_])", r"\\\1", value)
+
+
+# ---------- Events ----------
+
+
 @router.post("/", response_model=EventOut)
 def create_event(
     body: EventCreateIn,
@@ -136,8 +153,8 @@ def create_event(
         status="DRAFT",
     )
     db.add(event)
-    db.commit()
-    db.refresh(event)
+    # Fix #13: flush вместо commit — получаем event.id, но сохраняем транзакцию
+    db.flush()
 
     membership = EventMembership(
         user_id=current_user.id,
@@ -145,7 +162,9 @@ def create_event(
         context_role="OWNER",
     )
     db.add(membership)
+    # Один commit для обеих сущностей — атомарная операция
     db.commit()
+    db.refresh(event)
 
     return EventOut.model_validate(event, from_attributes=True)
 
@@ -168,6 +187,7 @@ def list_events(
                 Event.id.in_(select(membership_event_ids.c.event_id)),
             )
         )
+        .distinct()          # Fix #20: убираем дубли
         .offset(skip)
         .limit(limit)
     )
@@ -194,6 +214,26 @@ def get_event(
         raise HTTPException(status_code=403, detail="Нет доступа к мероприятию")
 
     return EventOut.model_validate(event, from_attributes=True)
+
+
+# Fix #24: GET-список секций мероприятия
+@router.get("/{event_id}/sections", response_model=List[SectionOut])
+def list_sections(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[SectionOut]:
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    stmt = (
+        select(Section)
+        .where(Section.event_id == event_id)
+        .order_by(Section.section_start)
+    )
+    sections = list(db.execute(stmt).scalars().all())
+    return [SectionOut.model_validate(s, from_attributes=True) for s in sections]
 
 
 @router.post("/{event_id}/sections", response_model=SectionOut)
@@ -249,23 +289,34 @@ def assign_curator(
         section.curator_id = body.user_id
         db.add(section)
 
+    # Fix #7: проверяем существующую роль, не перезаписываем OWNER/SPEAKER
     stmt = select(EventMembership).where(
         EventMembership.user_id == body.user_id,
         EventMembership.event_id == event_id,
     )
-    membership = db.execute(stmt).scalar_one_or_none()
-    if membership:
-        membership.context_role = "CURATOR"
-        membership.section_id = body.section_id
-    else:
-        membership = EventMembership(
-            user_id=body.user_id,
-            event_id=event_id,
-            context_role="CURATOR",
-            section_id=body.section_id,
-        )
-        db.add(membership)
+    existing = db.execute(stmt).scalar_one_or_none()
+    if existing:
+        if existing.context_role == "OWNER":
+            raise HTTPException(
+                status_code=409,
+                detail="Пользователь является владельцем мероприятия, назначение куратором невозможно",
+            )
+        # Если уже CURATOR — обновляем section_id; если SPEAKER — создаём отдельный membership
+        if existing.context_role == "CURATOR":
+            existing.section_id = body.section_id
+            db.commit()
+            db.refresh(existing)
+            return MembershipOut.model_validate(existing, from_attributes=True)
+        # Для SPEAKER/PARTICIPANT — создаём новую запись с ролью CURATOR
+        # (поддержка множественных ролей через отдельные записи)
 
+    membership = EventMembership(
+        user_id=body.user_id,
+        event_id=event_id,
+        context_role="CURATOR",
+        section_id=body.section_id,
+    )
+    db.add(membership)
     db.commit()
     db.refresh(membership)
     return MembershipOut.model_validate(membership, from_attributes=True)
@@ -332,40 +383,50 @@ def assign_speaker(
     report.speaker_confirmed = False
     db.add(report)
 
+    # Fix #7: проверяем существующую роль
     stmt = select(EventMembership).where(
         EventMembership.user_id == body.user_id,
         EventMembership.event_id == event.id,
     )
-    membership = db.execute(stmt).scalar_one_or_none()
-    if membership:
-        membership.context_role = "SPEAKER"
-        membership.report_id = report_id
-    else:
-        membership = EventMembership(
-            user_id=body.user_id,
-            event_id=event.id,
-            context_role="SPEAKER",
-            report_id=report_id,
-        )
-        db.add(membership)
+    existing = db.execute(stmt).scalar_one_or_none()
+    if existing:
+        if existing.context_role == "OWNER":
+            raise HTTPException(
+                status_code=409,
+                detail="Пользователь является владельцем мероприятия, назначение докладчиком невозможно",
+            )
+        if existing.context_role == "SPEAKER":
+            existing.report_id = report_id
+            db.commit()
+            db.refresh(report)
+            return ReportOut.model_validate(report, from_attributes=True)
+        # Для CURATOR/PARTICIPANT — создаём новую запись
 
+    membership = EventMembership(
+        user_id=body.user_id,
+        event_id=event.id,
+        context_role="SPEAKER",
+        report_id=report_id,
+    )
+    db.add(membership)
     db.commit()
     db.refresh(report)
     return ReportOut.model_validate(report, from_attributes=True)
 
 
+# Fix #5: экранирование спецсимволов ILIKE
 @users_router.get("/search", response_model=List[UserOut])
 def search_users(
     q: str = Query(..., min_length=1),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[UserOut]:
+    safe_q = _escape_like(q)
     stmt = (
         select(User)
-        .where(User.full_name.ilike(f"%{q}%"))
+        .where(User.full_name.ilike(f"%{safe_q}%"))
         .order_by(User.full_name.asc())
         .limit(20)
     )
     users = list(db.execute(stmt).scalars().all())
     return [UserOut.model_validate(u, from_attributes=True) for u in users]
-

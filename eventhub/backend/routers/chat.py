@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set
 from uuid import uuid4
 
@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _new_id() -> str:
@@ -81,7 +81,7 @@ class ConnectionManager:
         await websocket.send_json(
             {
                 "type": "history",
-                "items": [ChatMessageOut.model_validate(m, from_attributes=True).model_dump() for m in last_messages],
+                "items": [ChatMessageOut.model_validate(m, from_attributes=True).model_dump(mode="json") for m in last_messages],
             }
         )
 
@@ -200,13 +200,16 @@ def create_direct_chat(
 
     room = ChatRoom(id=_new_id(), event_id=None, type="DIRECT")
     db.add(room)
+    db.flush()
+
+    # Fix #9: создаём системные сообщения от ОБОИХ участников,
+    # чтобы _ensure_room_access пропускал обоих
+    msg1 = ChatMessage(id=_new_id(), room_id=room.id, user_id=current_user.id, text="Начат личный чат", created_at=_now())
+    msg2 = ChatMessage(id=_new_id(), room_id=room.id, user_id=other.id, text="Начат личный чат", created_at=_now())
+    db.add(msg1)
+    db.add(msg2)
     db.commit()
     db.refresh(room)
-
-    # Чтобы у создателя был доступ (в модели нет участников комнаты) — создаём первое сообщение
-    msg = ChatMessage(id=_new_id(), room_id=room.id, user_id=current_user.id, text="Начат личный чат", created_at=_now())
-    db.add(msg)
-    db.commit()
 
     return ChatRoomOut.model_validate(room, from_attributes=True)
 
@@ -316,7 +319,7 @@ async def websocket_chat(room_id: str, websocket: WebSocket, db: Session = Depen
             db.commit()
             db.refresh(msg)
 
-            out = ChatMessageOut.model_validate(msg, from_attributes=True).model_dump()
+            out = ChatMessageOut.model_validate(msg, from_attributes=True).model_dump(mode="json")
             await manager.broadcast(room_id=room_id, message={"type": "message", "item": out})
     except WebSocketDisconnect:
         manager.disconnect(room_id=room_id, websocket=websocket)

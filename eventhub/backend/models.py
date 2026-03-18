@@ -1,9 +1,18 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -11,6 +20,10 @@ from database import Base
 
 def _uuid() -> str:
     return str(uuid4())
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class User(Base):
@@ -24,7 +37,7 @@ class User(Base):
     photo_url: Mapped[str | None] = mapped_column(String, nullable=True)
     organization: Mapped[str | None] = mapped_column(String, nullable=True)
     global_role: Mapped[str] = mapped_column(String, nullable=False, default="PARTICIPANT")
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
 
 class Event(Base):
@@ -107,7 +120,7 @@ class SectionReport(Base):
     section_id: Mapped[str] = mapped_column(String, ForeignKey("sections.id"), nullable=False)
     author_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
 
 class ChatRoom(Base):
@@ -125,11 +138,10 @@ class ChatMessage(Base):
     room_id: Mapped[str] = mapped_column(String, ForeignKey("chat_rooms.id"), nullable=False)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
 
 # --- Back 5: participant program / schedule / comments / feedback ---
-# Minimal new entities, aligned with existing project's "no relationships, only FKs" style.
 
 
 class UserReportSchedule(Base):
@@ -138,11 +150,12 @@ class UserReportSchedule(Base):
     """
 
     __tablename__ = "user_report_schedules"
+    __table_args__ = (UniqueConstraint("user_id", "report_id", name="ux_user_report_schedules_user_report"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
     report_id: Mapped[str] = mapped_column(String, ForeignKey("reports.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
 
 class ReportComment(Base):
@@ -156,7 +169,7 @@ class ReportComment(Base):
     report_id: Mapped[str] = mapped_column(String, ForeignKey("reports.id"), nullable=False)
     author_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
     answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     answer_by_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
@@ -169,9 +182,10 @@ class ReportFeedback(Base):
     """
 
     __tablename__ = "report_feedbacks"
+    __table_args__ = (UniqueConstraint("report_id", "user_id", name="ux_report_feedbacks_report_user"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     report_id: Mapped[str] = mapped_column(String, ForeignKey("reports.id"), nullable=False)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)

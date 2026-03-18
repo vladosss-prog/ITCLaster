@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
@@ -138,7 +138,7 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
 
     payload = {
         "sub": user.id,
-        "exp": datetime.utcnow() + timedelta(minutes=expire_minutes),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=expire_minutes),
     }
     token = jwt.encode(payload, secret_key, algorithm=algorithm)
 

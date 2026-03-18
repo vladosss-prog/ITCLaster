@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -20,13 +20,13 @@ from models import (
     User,
     UserReportSchedule,
 )
-from routers.chat import get_current_user
+from routers.auth import get_current_user
 
 router = APIRouter()
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _new_id() -> str:
@@ -350,7 +350,8 @@ def create_report_comment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CommentOut:
-    _get_report_with_section_or_404(db, id)
+    report, section = _get_report_with_section_or_404(db, id)
+    _ensure_event_membership(db, current_user.id, section.event_id)
     comment = ReportComment(
         id=_new_id(),
         report_id=id,
@@ -398,7 +399,8 @@ def set_report_feedback(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> FeedbackOut:
-    _get_report_with_section_or_404(db, id)
+    report, section = _get_report_with_section_or_404(db, id)
+    _ensure_event_membership(db, current_user.id, section.event_id)
 
     stmt = select(ReportFeedback).where(and_(ReportFeedback.report_id == id, ReportFeedback.user_id == current_user.id))
     fb = db.execute(stmt).scalar_one_or_none()
