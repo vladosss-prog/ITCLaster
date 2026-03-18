@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -776,7 +776,7 @@ const DEMO_USERS: Record<string, DemoUser> = {
     email: "curator@it.ru",
     password: "curator",
     full_name: "Куратор Секционов",
-    global_role: "PARTICIPANT" as GlobalRole,
+    global_role: "CURATOR" as GlobalRole,
     organization: "ОмГТУ",
   },
   "speaker@it.ru": {
@@ -784,7 +784,7 @@ const DEMO_USERS: Record<string, DemoUser> = {
     email: "speaker@it.ru",
     password: "speaker",
     full_name: "Алексей Спикеров",
-    global_role: "PARTICIPANT" as GlobalRole,
+    global_role: "SPEAKER" as GlobalRole,
     organization: "ОмГТУ",
   },
 };
@@ -822,8 +822,8 @@ function getBestRole(userId: string, memberships: DemoMembership[], globalRole?:
 const DEMO_ALL_USERS: User[] = [
   { id: "u1", email: "org@it.ru", full_name: "Организатор Иванов", global_role: "ORGANIZER", organization: "ИТ-Кластер Сибири" },
   { id: "u2", email: "user@it.ru", full_name: "Иван Участников", global_role: "PARTICIPANT", organization: "ОмГТУ" },
-  { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "PARTICIPANT", organization: "ОмГТУ" },
-  { id: "u4", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "PARTICIPANT", organization: "ОмГТУ" },
+  { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "CURATOR" as GlobalRole, organization: "ОмГТУ" },
+  { id: "u4", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "SPEAKER" as GlobalRole, organization: "ОмГТУ" },
 ];
 
 const DEMO_EVENTS: EventData[] = [
@@ -1771,8 +1771,8 @@ function ChatView({
     if (demoMode) {
       const demoUsers = ([
         { id: "u1", email: "org@it.ru", full_name: "Организатор Иванов", global_role: "ORGANIZER" as GlobalRole },
-        { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "PARTICIPANT" as GlobalRole },
-        { id: "u5", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "PARTICIPANT" as GlobalRole },
+        { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "CURATOR" as GlobalRole },
+        { id: "u5", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "SPEAKER" as GlobalRole },
       ] as User[]).filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase()));
       setDmResults(demoUsers);
     } else {
@@ -2052,7 +2052,6 @@ function OrganizerDashboard({
     }
   };
   const assignCurator = async (userId: string, eventId: string) => {
-    // Всегда обновляем локальный стейт для мгновенного отображения
     setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
     // Кэшируем пользователя для отображения имени
     const foundUser = curatorResults.find((u) => u.id === userId);
@@ -2112,44 +2111,39 @@ function OrganizerDashboard({
         if (evs?.length) {
           setEvents(evs);
           setSelEv(evs[0].id);
-          // Load all users for assignee dropdown
-          try { const users = await apiFetch<User[]>("GET", "/api/users/search?q="); setAllUsers(users || []); } catch { /* keep demo fallback */ }
+          // Load all users for assignee dropdown (empty q = all users)
+          let freshUsers: User[] = [];
+          try { freshUsers = await apiFetch<User[]>("GET", "/api/users/search?q=") || []; setAllUsers(freshUsers); } catch {}
           // Load tasks
           const all: Task[] = [];
           for (const ev of evs) {
             try {
               const ts = await apiFetch<any[]>("GET", `/api/tasks/?event_id=${ev.id}`);
               for (const t of (ts || [])) {
-                const assigneeName = (allUsers.length ? allUsers : DEMO_ALL_USERS).find((u) => u.id === t.assigned_to)?.full_name || "";
+                const assigneeName = (freshUsers.length ? freshUsers : DEMO_ALL_USERS).find((u) => u.id === t.assigned_to)?.full_name || "";
                 all.push({ ...t, assigned_to_name: assigneeName });
               }
             } catch {}
           }
           setTasks(all);
-          // Load curators and speakers for all events (to display in cards)
-          const newMemberships: DemoMembership[] = [];
+          // Load curators and speakers for all events → populate memberships
+          const loadedMemberships: DemoMembership[] = [];
           for (const ev of evs) {
             try {
               const curators = await apiFetch<any[]>("GET", `/api/events/${ev.id}/curators`);
-              for (const m of (curators || [])) {
-                newMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "CURATOR" as const });
-              }
+              (curators || []).forEach((m: any) => loadedMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "CURATOR" as const }));
             } catch {}
             try {
               const speakers = await apiFetch<any[]>("GET", `/api/events/${ev.id}/speakers`);
-              for (const m of (speakers || [])) {
-                newMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "SPEAKER" as const });
-              }
+              (speakers || []).forEach((m: any) => loadedMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "SPEAKER" as const }));
             } catch {}
           }
-          if (newMemberships.length > 0) {
-  setMemberships((prev) => {
-    // Оставляем PARTICIPANT-записи (регистрации на мероприятия),
-    // заменяем CURATOR/SPEAKER свежими данными из API
-    const participantEntries = prev.filter((m) => m.context_role === "PARTICIPANT");
-    return [...participantEntries, ...newMemberships];
-  });
-}
+          if (loadedMemberships.length > 0) {
+            setMemberships(prev => {
+              const participantEntries = prev.filter(m => m.context_role === "PARTICIPANT");
+              return [...participantEntries, ...loadedMemberships];
+            });
+          }
         }
       } catch {}
       finally { setLoading(false); }
@@ -2352,22 +2346,6 @@ function OrganizerDashboard({
                                 ))}
                               </div>
                             )}
-                            {/* Отображение назначенных кураторов */}
-                            {memberships.filter((m) => m.event_id === ev.id && m.context_role === "CURATOR").length > 0 && (
-                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Кураторы:</span>
-                                {memberships.filter((m) => m.event_id === ev.id && m.context_role === "CURATOR").map((m) => {
-                                  const allKnownUsers = allUsers.length ? allUsers : DEMO_ALL_USERS;
-                                  const u = allKnownUsers.find((x) => x.id === m.user_id);
-                                  const name = u?.full_name || m.user_id;
-                                  return (
-                                    <span key={m.user_id} style={{ fontSize: 11, padding: "2px 8px", background: "#e8f0fe", color: "var(--primary)", borderRadius: 100, fontWeight: 700 }}>
-                                      {name}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); setShowAssignSpeaker(showAssignSpeaker === ev.id ? "" : ev.id); }}
                               style={{ marginTop: 4, padding: "5px 14px", background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
@@ -2387,19 +2365,23 @@ function OrganizerDashboard({
                                 ))}
                               </div>
                             )}
-                            {/* Отображение назначенных спикеров */}
-                            {memberships.filter((m) => m.event_id === ev.id && m.context_role === "SPEAKER").length > 0 && (
-                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {/* Назначенные кураторы */}
+                            {memberships.filter(m => m.event_id === ev.id && m.context_role === "CURATOR").length > 0 && (
+                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Кураторы:</span>
+                                {memberships.filter(m => m.event_id === ev.id && m.context_role === "CURATOR").map(m => {
+                                  const u = allUsers.find(x => x.id === m.user_id) || DEMO_ALL_USERS.find(x => x.id === m.user_id);
+                                  return u ? <span key={m.user_id} style={{ fontSize: 11, padding: "2px 8px", background: "#e8f0fe", color: "var(--primary)", borderRadius: 100, fontWeight: 700 }}>📋 {u.full_name}</span> : null;
+                                })}
+                              </div>
+                            )}
+                            {/* Назначенные спикеры */}
+                            {memberships.filter(m => m.event_id === ev.id && m.context_role === "SPEAKER").length > 0 && (
+                              <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Спикеры:</span>
-                                {memberships.filter((m) => m.event_id === ev.id && m.context_role === "SPEAKER").map((m) => {
-                                  const allKnownUsers = allUsers.length ? allUsers : DEMO_ALL_USERS;
-                                  const u = allKnownUsers.find((x) => x.id === m.user_id);
-                                  const name = u?.full_name || m.user_id;
-                                  return (
-                                    <span key={m.user_id} style={{ fontSize: 11, padding: "2px 8px", background: "#fffbeb", color: "#d97706", borderRadius: 100, fontWeight: 700 }}>
-                                      {name}
-                                    </span>
-                                  );
+                                {memberships.filter(m => m.event_id === ev.id && m.context_role === "SPEAKER").map(m => {
+                                  const u = allUsers.find(x => x.id === m.user_id) || DEMO_ALL_USERS.find(x => x.id === m.user_id);
+                                  return u ? <span key={m.user_id} style={{ fontSize: 11, padding: "2px 8px", background: "#fffbeb", color: "#d97706", borderRadius: 100, fontWeight: 700 }}>🎤 {u.full_name}</span> : null;
                                 })}
                               </div>
                             )}
@@ -2687,6 +2669,192 @@ function ParticipantDashboard({
   // Пользователи для назначения (куратор может назначать спикерам своих мероприятий)
   const assignableUsers = isCurator ? allUsers.filter((u) => u.id !== user.id) : [];
 
+  // Загружаем список пользователей для dropdown если ещё не загружен
+  useEffect(() => {
+    if (!isCurator || demoMode || allUsers.length > 0) return;
+    apiFetch<User[]>("GET", "/api/users/search?q=")
+      .then(users => { if (users?.length) setAllUsers(users); })
+      .catch(() => {});
+  }, [isCurator, demoMode, allUsers.length]);
+
+  // ═══ СЕКЦИИ КУРАТОРА (реальный режим) ═══
+  const [curSections, setCurSections] = useState<any[]>([]);
+  const [curReports, setCurReports] = useState<Record<string, any[]>>({});
+  const [secLoading, setSecLoading] = useState(false);
+  const [secError, setSecError] = useState("");
+  const [secModal, setSecModal] = useState<{ open: boolean; section?: any; eventId: string }>({ open: false, eventId: "" });
+  const [repModal, setRepModal] = useState<{ open: boolean; report?: any; sectionId: string }>({ open: false, sectionId: "" });
+  const [delSecTarget, setDelSecTarget] = useState<any>(null);
+  const [delRepTarget, setDelRepTarget] = useState<any>(null);
+  const [secAssignSpeaker, setSecAssignSpeaker] = useState<any>(null);
+  const [secAssignSearch, setSecAssignSearch] = useState("");
+  const [secAssignResults, setSecAssignResults] = useState<User[]>([]);
+  const [myEventIdForSec, setMyEventIdForSec] = useState("");
+  const myEventIdRef = useRef(""); // синхронная версия для кнопок
+
+  const loadCuratorSections = async () => {
+    if (demoMode) {
+      const demoSecs: any[] = [];
+      for (const eid of curatorEventIds) {
+        const prog = (DEMO_SECTIONS_PROGRAM as any)[eid] || [];
+        prog.forEach((s: any) => demoSecs.push({ ...s, event_id: eid }));
+      }
+      // Устанавливаем eventId для кнопки «Новая секция»
+      if (curatorEventIds[0]) { setMyEventIdForSec(curatorEventIds[0]); myEventIdRef.current = curatorEventIds[0]; }
+      setCurSections(demoSecs);
+      const recs: Record<string, any[]> = {};
+      demoSecs.forEach((s: any) => { recs[s.id] = s.reports || []; });
+      setCurReports(recs);
+      return;
+    }
+    setSecLoading(true); setSecError("");
+    try {
+      // GET /api/events/ возвращает все мероприятия где есть membership
+      // Фильтруем только те где пользователь — куратор (через /curators эндпоинт каждого или через memberships)
+      const evRes = await apiFetch<any[]>("GET", "/api/events/");
+      const allEvents = evRes || [];
+
+      // Определяем мероприятия куратора:
+      // 1. Из уже загруженных memberships в памяти (быстро)
+      // 2. Если memberships пусты — проверяем каждое мероприятие через /curators
+      let curatorEvIds: Set<string> = new Set(curatorEventIds);
+
+      if (curatorEvIds.size === 0) {
+        // Загружаем кураторские memberships для каждого мероприятия
+        const token = localStorage.getItem("access_token") || "";
+        await Promise.all(allEvents.map(async (ev: any) => {
+          try {
+            const r = await fetch(`/api/events/${ev.id}/curators`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            if (r.ok) {
+              const ms: any[] = await r.json();
+              if (ms.some((m: any) => m.user_id === user.id)) curatorEvIds.add(ev.id);
+            }
+          } catch {}
+        }));
+      }
+
+      // Если куратор не нашёлся ни в одном мероприятии — показываем все (fallback)
+      const myEvents = curatorEvIds.size > 0
+        ? allEvents.filter((ev: any) => curatorEvIds.has(ev.id))
+        : allEvents;
+
+      // Берём первый event_id синхронно
+      if (myEvents.length > 0 && !myEventIdRef.current) {
+        myEventIdRef.current = myEvents[0].id;
+        setMyEventIdForSec(myEvents[0].id);
+      }
+
+      const allSecs: any[] = [];
+      for (const ev of myEvents) {
+        // Устанавливаем eventId — последнее известное мероприятие куратора
+        myEventIdRef.current = ev.id;
+        setMyEventIdForSec(ev.id);
+
+        try {
+          const secsRes = await apiFetch<any[]>("GET", `/api/events/${ev.id}/sections`);
+          for (const sec of secsRes || []) allSecs.push({ ...sec, event_id: sec.event_id || ev.id });
+        } catch {}
+      }
+
+      setCurSections(allSecs);
+
+      // Загружаем доклады для каждой секции параллельно
+      const recs: Record<string, any[]> = {};
+      await Promise.all(allSecs.map(async (sec: any) => {
+        try {
+          const reps = await apiFetch<any[]>("GET", `/api/sections/${sec.id}/reports`);
+          recs[sec.id] = reps || [];
+        } catch { recs[sec.id] = []; }
+      }));
+      setCurReports(recs);
+    } catch (e: any) { setSecError(e?.message || "Не удалось загрузить секции"); }
+    finally { setSecLoading(false); }
+  };
+
+  useEffect(() => {
+    if (tab === "sections" && isCurator) loadCuratorSections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, isCurator, demoMode]);
+
+  const saveSec = async (form: any) => {
+    const eid = secModal.section?.event_id || secModal.eventId || myEventIdRef.current || myEventIdForSec;
+    if (demoMode) {
+      const fake = { id: secModal.section?.id || `ds-${Date.now()}`, event_id: eid, curator_id: user.id, readiness_percent: 0, ...form };
+      setCurSections(prev => secModal.section ? prev.map(s => s.id === fake.id ? fake : s) : [...prev, fake]);
+      if (!secModal.section) setCurReports(prev => ({ ...prev, [fake.id]: [] }));
+      setSecModal({ open: false, eventId: "" }); return;
+    }
+    try {
+      let res: any;
+      if (secModal.section) res = await apiFetch("PATCH", `/api/sections/${secModal.section.id}`, form);
+      else res = await apiFetch("POST", `/api/events/${eid}/sections`, form);
+      setCurSections(prev => secModal.section ? prev.map(s => s.id === res.id ? res : s) : [...prev, res]);
+      if (!secModal.section) setCurReports(prev => ({ ...prev, [res.id]: [] }));
+      setSecModal({ open: false, eventId: "" });
+    } catch (e: any) { alert(e?.response?.data?.detail || e?.message || "Ошибка"); }
+  };
+
+  const deleteSec = async (sec: any) => {
+    if (demoMode) {
+      setCurSections(prev => prev.filter(s => s.id !== sec.id));
+      setDelSecTarget(null); return;
+    }
+    try {
+      await apiFetch("DELETE", `/api/sections/${sec.id}`);
+      setCurSections(prev => prev.filter(s => s.id !== sec.id));
+      setDelSecTarget(null);
+    } catch (e: any) { alert(e?.message || "Ошибка удаления"); }
+  };
+
+  const saveRep = async (form: any) => {
+    const sid = repModal.report?.section_id || repModal.sectionId;
+    if (demoMode) {
+      const fake = { id: repModal.report?.id || `dr-${Date.now()}`, section_id: sid, speaker_id: null, speaker_confirmed: false, ...form };
+      setCurReports(prev => ({ ...prev, [sid]: repModal.report ? (prev[sid] || []).map((r: any) => r.id === fake.id ? fake : r) : [...(prev[sid] || []), fake] }));
+      setRepModal({ open: false, sectionId: "" }); return;
+    }
+    try {
+      let res: any;
+      if (repModal.report) res = await apiFetch("PATCH", `/api/reports/${repModal.report.id}`, form);
+      else res = await apiFetch("POST", `/api/sections/${sid}/reports`, form);
+      setCurReports(prev => ({ ...prev, [sid]: repModal.report ? (prev[sid] || []).map((r: any) => r.id === res.id ? res : r) : [...(prev[sid] || []), res] }));
+      setRepModal({ open: false, sectionId: "" });
+    } catch (e: any) { alert(e?.response?.data?.detail || e?.message || "Ошибка"); }
+  };
+
+  const deleteRep = async (rep: any) => {
+    if (demoMode) {
+      setCurReports(prev => ({ ...prev, [rep.section_id]: (prev[rep.section_id] || []).filter((r: any) => r.id !== rep.id) }));
+      setDelRepTarget(null); return;
+    }
+    try {
+      await apiFetch("DELETE", `/api/reports/${rep.id}`);
+      setCurReports(prev => ({ ...prev, [rep.section_id]: (prev[rep.section_id] || []).filter((r: any) => r.id !== rep.id) }));
+      setDelRepTarget(null);
+    } catch (e: any) { alert(e?.message || "Ошибка удаления"); }
+  };
+
+  const searchSecSpeakers = async (q: string) => {
+    setSecAssignSearch(q);
+    if (q.length < 2) { setSecAssignResults([]); return; }
+    if (demoMode) { setSecAssignResults(DEMO_ALL_USERS.filter(u => u.full_name.toLowerCase().includes(q.toLowerCase()))); return; }
+    try { const r = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`); setSecAssignResults(r || []); } catch {}
+  };
+
+  const assignSecSpeaker = async (speakerUser: User) => {
+    if (!secAssignSpeaker) return;
+    if (demoMode) {
+      setCurReports(prev => ({ ...prev, [secAssignSpeaker.section_id]: (prev[secAssignSpeaker.section_id] || []).map((r: any) => r.id === secAssignSpeaker.id ? { ...r, speaker_id: speakerUser.id, speaker_name: speakerUser.full_name } : r) }));
+      setSecAssignSpeaker(null); setSecAssignSearch(""); setSecAssignResults([]); return;
+    }
+    try {
+      await apiFetch("POST", `/api/reports/${secAssignSpeaker.id}/speaker`, { user_id: speakerUser.id });
+      setCurReports(prev => ({ ...prev, [secAssignSpeaker.section_id]: (prev[secAssignSpeaker.section_id] || []).map((r: any) => r.id === secAssignSpeaker.id ? { ...r, speaker_id: speakerUser.id, speaker_name: speakerUser.full_name } : r) }));
+      setSecAssignSpeaker(null); setSecAssignSearch(""); setSecAssignResults([]);
+    } catch (e: any) { alert(e?.response?.data?.detail || e?.message || "Ошибка"); }
+  };
+
+
   // Назначить спикера (для куратора)
   const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
   const [speakerSearch, setSpeakerSearch] = useState("");
@@ -2767,79 +2935,309 @@ function ParticipantDashboard({
             {/* ═══ TAB: МОИ СЕКЦИИ (только куратор) ═══ */}
             {tab === "sections" && isCurator && (
               <div>
-                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>🗂️ Мои секции</h1>
-                {events.filter((e) => curatorEventIds.includes(e.id)).map((ev) => {
-                  const evSections = (DEMO_SECTIONS_PROGRAM[ev.id] || []);
-                  const evSpeakers = memberships.filter((m) => m.event_id === ev.id && m.context_role === "SPEAKER");
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                  <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", margin: 0 }}>🗂️ Мои секции</h1>
+                  <button onClick={() => setSecModal({ open: true, eventId: myEventIdRef.current || myEventIdForSec })}
+                    style={{ padding: "9px 20px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                    ✚ Новая секция
+                  </button>
+                </div>
+
+                {secLoading && <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Загрузка секций...</div>}
+                {secError && <div style={{ background: "#fef2f2", color: "#dc2626", padding: 14, borderRadius: 10, marginBottom: 16 }}>{secError}</div>}
+
+                {!secLoading && curSections.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+                    <div style={{ fontWeight: 800, fontSize: 18, color: "var(--primary-dark)", marginBottom: 8 }}>Секций пока нет</div>
+                    <div style={{ color: "#64748b", fontSize: 14, marginBottom: 24 }}>Создайте первую секцию или дождитесь назначения от организатора</div>
+                    <button onClick={() => setSecModal({ open: true, eventId: myEventIdRef.current || myEventIdForSec })}
+                      style={{ padding: "12px 28px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                      ✚ Создать первую секцию
+                    </button>
+                  </div>
+                )}
+
+                {curSections.map((sec: any) => {
+                  const reps: any[] = curReports[sec.id] || [];
                   return (
-                    <div key={ev.id} style={{ marginBottom: 24 }}>
-                      <h2 style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 12 }}>{ev.title}</h2>
-                      {evSections.map((sec: any) => (
-                        <div key={sec.id} style={{ background: "white", borderRadius: 14, padding: "18px 22px", border: "1.5px solid var(--border)", marginBottom: 12 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                            <div>
-                              <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary)" }}>📌 {sec.title}</div>
-                              {sec.location && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>📍 {sec.location} · {sec.format || "—"}</div>}
-                            </div>
+                    <div key={sec.id} style={{ background: "white", borderRadius: 16, border: "1.5px solid var(--border)", marginBottom: 16, overflow: "hidden", boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
+                      {/* Заголовок секции */}
+                      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#f8fbff" }}>
+                        <div>
+                          <div style={{ fontWeight: 900, fontSize: 16, color: "var(--primary-dark)" }}>📌 {sec.title}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, display: "flex", gap: 10 }}>
+                            {sec.location && <span>📍 {sec.location}</span>}
+                            {sec.format && <span>📌 {sec.format}</span>}
+                            {sec.section_start && <span>🕐 {new Date(sec.section_start).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
                           </div>
-
-                          {/* Доклады секции */}
-                          {(sec.reports || []).length > 0 && (
-                            <div style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>Доклады</div>
-                              {sec.reports.map((r: any) => (
-                                <div key={r.id} style={{ padding: "8px 12px", background: "var(--bg-light)", borderRadius: 8, marginBottom: 4, fontSize: 13 }}>
-                                  <span style={{ fontWeight: 700, color: "var(--primary-dark)" }}>{r.title}</span>
-                                  {r.speaker_name && <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>🎤 {r.speaker_name}</span>}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Назначенные спикеры */}
-                          {evSpeakers.length > 0 && (
-                            <div style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>Назначенные спикеры</div>
-                              {evSpeakers.map((sp, i) => {
-                                const spUser = allUsers.find((u) => u.id === sp.user_id) || DEMO_ALL_USERS.find((u) => u.id === sp.user_id);
-                                return spUser ? (
-                                  <div key={i} style={{ padding: "6px 10px", background: "#fffbeb", borderRadius: 6, marginBottom: 3, fontSize: 12, fontWeight: 600, color: "#92400e", display: "inline-block", marginRight: 6 }}>
-                                    🎤 {spUser.full_name}
-                                  </div>
-                                ) : null;
-                              })}
-                            </div>
-                          )}
-
-                          {/* Назначить спикера */}
-                          <button
-                            onClick={() => setShowAssignSpeaker(showAssignSpeaker === `${ev.id}-${sec.id}` ? "" : `${ev.id}-${sec.id}`)}
-                            style={{ padding: "7px 16px", background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
-                          >
-                            🎤 Назначить спикера
-                          </button>
-                          {showAssignSpeaker === `${ev.id}-${sec.id}` && (
-                            <div style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
-                              <input type="text" placeholder="Поиск по ФИО (мин. 2 символа)..." value={speakerSearch} onChange={(e) => searchSpeakers(e.target.value)}
-                                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
-                              {speakerResults.map((u) => (
-                                <div key={u.id} onClick={() => assignSpeaker(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}
-                                  onMouseOver={(e) => e.currentTarget.style.background = "#fffbeb"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
-                                  <span>{u.full_name}</span>
-                                  <span style={{ color: "#d97706", fontSize: 11 }}>Назначить</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
-                      ))}
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => setSecModal({ open: true, section: sec, eventId: sec.event_id })}
+                            style={{ padding: "5px 12px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                            ✏️ Изменить
+                          </button>
+                          <button onClick={() => setDelSecTarget(sec)}
+                            style={{ padding: "5px 12px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                            🗑
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Доклады */}
+                      <div style={{ padding: "14px 18px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: "#475569" }}>Доклады ({reps.length})</span>
+                          <button onClick={() => setRepModal({ open: true, sectionId: sec.id })}
+                            style={{ padding: "5px 12px", background: "#ecfdf5", color: "#10b981", border: "1px solid #a7f3d0", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                            + Добавить доклад
+                          </button>
+                        </div>
+
+                        {reps.length === 0 ? (
+                          <div style={{ color: "#94a3b8", fontSize: 13, padding: "8px 0" }}>Нет докладов</div>
+                        ) : (
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {reps.map((r: any) => (
+                              <div key={r.id} style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 14px", border: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
+                                  <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+                                    {r.start_time && <span>🕐 {new Date(r.start_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>}
+                                    {r.presentation_format && <span style={{ padding: "1px 7px", borderRadius: 100, background: "#e8f0fe", color: "var(--primary)", fontSize: 10, fontWeight: 800 }}>{r.presentation_format}</span>}
+                                    {r.speaker_id
+                                      ? <span style={{ color: r.speaker_confirmed ? "#16a34a" : "#92400e" }}>🎤 {r.speaker_name || "Спикер"} {r.speaker_confirmed ? "✅" : "⏳"}</span>
+                                      : <span style={{ color: "#dc2626" }}>🎤 Спикер не назначен</span>}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button onClick={() => setSecAssignSpeaker(r)}
+                                    style={{ padding: "4px 10px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                    🎤 {r.speaker_id ? "Сменить" : "Спикер"}
+                                  </button>
+                                  <button onClick={() => setRepModal({ open: true, report: r, sectionId: sec.id })}
+                                    style={{ padding: "4px 8px", background: "#f1f5f9", color: "#64748b", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                    ✏️
+                                  </button>
+                                  <button onClick={() => setDelRepTarget(r)}
+                                    style={{ padding: "4px 8px", background: "#fef2f2", color: "#dc2626", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                    🗑
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
+
+                {/* ─── МОДАЛКА: секция ─── */}
+                {secModal.open && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 500, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)", maxHeight: "90vh", overflowY: "auto" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+                        <h3 style={{ fontWeight: 900, margin: 0, fontSize: 16 }}>{secModal.section ? "Редактировать секцию" : "Новая секция"}</h3>
+                        <button onClick={() => setSecModal({ open: false, eventId: "" })} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
+                      </div>
+                      {(() => {
+                        const s = secModal.section;
+                        const inp = (label: string, key: string, type = "text", placeholder = "") => {
+                          const id = `sec-${key}`;
+                          return (
+                            <div style={{ marginBottom: 12 }}>
+                              <label htmlFor={id} style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>{label}</label>
+                              <input id={id} type={type} placeholder={placeholder} defaultValue={s?.[key] ? (type === "datetime-local" ? String(s[key]).slice(0,16) : s[key]) : ""}
+                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }}
+                                onChange={e => { (secModal as any)[`_${key}`] = e.target.value; }} />
+                            </div>
+                          );
+                        };
+                        return (
+                          <form onSubmit={e => { e.preventDefault();
+                            const fd = new FormData(e.currentTarget);
+                            const form: any = {};
+                            ["title","format","location","section_start","section_end","tech_notes"].forEach(k => { const v = fd.get(k); if (v) form[k] = String(v); });
+                            saveSec(form);
+                          }}>
+                            <div style={{ marginBottom: 12 }}>
+                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Название *</label>
+                              <input name="title" required defaultValue={s?.title || ""} placeholder="Название секции" autoFocus
+                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }} />
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                              <div>
+                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Формат</label>
+                                <select name="format" defaultValue={s?.format || ""} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }}>
+                                  <option value="">Не выбран</option>
+                                  <option value="SEQUENTIAL">Последовательный</option>
+                                  <option value="ROUNDTABLE">Круглый стол</option>
+                                  <option value="PANEL">Панельная дискуссия</option>
+                                  <option value="WORKSHOP">Воркшоп</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Локация</label>
+                                <input name="location" defaultValue={s?.location || ""} placeholder="Зал A..."
+                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }} />
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 0 }}>
+                              <div>
+                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Начало</label>
+                                <input type="datetime-local" name="section_start" defaultValue={s?.section_start ? String(s.section_start).slice(0,16) : ""}
+                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Конец</label>
+                                <input type="datetime-local" name="section_end" defaultValue={s?.section_end ? String(s.section_end).slice(0,16) : ""}
+                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
+                              </div>
+                            </div>
+                            <div style={{ marginTop: 10 }}>
+                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Технические заметки</label>
+                              <textarea name="tech_notes" defaultValue={s?.tech_notes || ""} rows={3} placeholder="Оборудование, требования..."
+                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", resize: "vertical" }} />
+                            </div>
+                            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                              <button type="submit" style={{ flex: 1, padding: 11, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                {secModal.section ? "Сохранить" : "Создать секцию"}
+                              </button>
+                              <button type="button" onClick={() => setSecModal({ open: false, eventId: "" })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                Отмена
+                              </button>
+                            </div>
+                          </form>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── МОДАЛКА: доклад ─── */}
+                {repModal.open && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 480, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #10b981", maxHeight: "90vh", overflowY: "auto" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+                        <h3 style={{ fontWeight: 900, margin: 0, fontSize: 16 }}>{repModal.report ? "Редактировать доклад" : "Новый доклад"}</h3>
+                        <button onClick={() => setRepModal({ open: false, sectionId: "" })} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
+                      </div>
+                      {(() => {
+                        const r = repModal.report;
+                        return (
+                          <form onSubmit={e => { e.preventDefault();
+                            const fd = new FormData(e.currentTarget);
+                            const form: any = {};
+                            ["title","description","presentation_format","start_time","end_time"].forEach(k => { const v = fd.get(k); if (v) form[k] = String(v); });
+                            saveRep(form);
+                          }}>
+                            <div style={{ marginBottom: 12 }}>
+                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Название *</label>
+                              <input name="title" required defaultValue={r?.title || ""} placeholder="Название доклада" autoFocus
+                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }} />
+                            </div>
+                            <div style={{ marginBottom: 12 }}>
+                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Описание</label>
+                              <textarea name="description" defaultValue={r?.description || ""} rows={3}
+                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", resize: "vertical" }} />
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                              <div>
+                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Начало</label>
+                                <input type="datetime-local" name="start_time" defaultValue={r?.start_time ? String(r.start_time).slice(0,16) : ""}
+                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Конец</label>
+                                <input type="datetime-local" name="end_time" defaultValue={r?.end_time ? String(r.end_time).slice(0,16) : ""}
+                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
+                              </div>
+                            </div>
+                            <div style={{ marginTop: 10, marginBottom: 12 }}>
+                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Формат</label>
+                              <select name="presentation_format" defaultValue={r?.presentation_format || ""} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }}>
+                                <option value="">Не выбран</option>
+                                <option value="OFFLINE">Офлайн</option>
+                                <option value="ONLINE">Онлайн</option>
+                              </select>
+                            </div>
+                            <div style={{ display: "flex", gap: 10 }}>
+                              <button type="submit" style={{ flex: 1, padding: 11, background: "#10b981", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                {repModal.report ? "Сохранить" : "Создать доклад"}
+                              </button>
+                              <button type="button" onClick={() => setRepModal({ open: false, sectionId: "" })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                Отмена
+                              </button>
+                            </div>
+                          </form>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── МОДАЛКА: назначить спикера ─── */}
+                {secAssignSpeaker && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+                        <h3 style={{ fontWeight: 900, margin: 0, fontSize: 16 }}>🎤 Назначить спикера</h3>
+                        <button onClick={() => { setSecAssignSpeaker(null); setSecAssignSearch(""); setSecAssignResults([]); }} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
+                      </div>
+                      <p style={{ fontSize: 13, color: "#64748b", marginBottom: 14 }}>Доклад: «{secAssignSpeaker.title}»</p>
+                      <input type="text" placeholder="Поиск по ФИО (мин. 2 символа)..." value={secAssignSearch} onChange={e => searchSecSpeakers(e.target.value)} autoFocus
+                        style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 14, boxSizing: "border-box", fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 12 }} />
+                      {secAssignResults.length > 0 && (
+                        <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+                          {secAssignResults.map((u: User) => (
+                            <div key={u.id} onClick={() => assignSecSpeaker(u)}
+                              style={{ padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}
+                              onMouseOver={e => (e.currentTarget.style.background = "#f0f7ff")} onMouseOut={e => (e.currentTarget.style.background = "white")}>
+                              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, flexShrink: 0 }}>{u.full_name[0]}</div>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{u.full_name}</div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {secAssignSearch.length >= 2 && secAssignResults.length === 0 && <div style={{ color: "#aaa", textAlign: "center", padding: 16, fontSize: 13 }}>Никого не найдено</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ СЕКЦИИ ─── */}
+                {delSecTarget && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
+                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
+                      <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить секцию?</h3>
+                      <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>Секция «{delSecTarget.title}» и все её доклады будут удалены.</p>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button onClick={() => deleteSec(delSecTarget)} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
+                        <button onClick={() => setDelSecTarget(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ ДОКЛАДА ─── */}
+                {delRepTarget && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
+                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
+                      <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить доклад?</h3>
+                      <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>Доклад «{delRepTarget.title}» будет удалён.</p>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button onClick={() => deleteRep(delRepTarget)} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
+                        <button onClick={() => setDelRepTarget(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ═══ TAB: КАНБАН ═══ */}
             {tab === "kanban" && (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>

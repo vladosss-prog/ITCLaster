@@ -64,11 +64,16 @@ def _utcnow() -> datetime:
 
 
 def _ensure_event_member(db: Session, user_id: str, event_id: str) -> None:
-    """Fix #4: Проверяем, что пользователь является участником мероприятия."""
+    """Проверяем доступ: owner мероприятия или любой участник через EventMembership."""
+    # Владелец мероприятия всегда имеет доступ
+    event = db.get(Event, event_id)
+    if event and event.owner_id == user_id:
+        return
+    # Проверяем membership (PARTICIPANT / CURATOR / SPEAKER)
     stmt = select(EventMembership.id).where(
         and_(EventMembership.user_id == user_id, EventMembership.event_id == event_id)
     )
-    if db.execute(stmt).scalar_one_or_none() is None:
+    if db.execute(stmt).scalars().first() is None:
         raise HTTPException(status_code=403, detail="Нет доступа к мероприятию")
 
 
