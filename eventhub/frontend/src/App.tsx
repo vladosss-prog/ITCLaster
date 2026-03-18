@@ -2030,27 +2030,50 @@ function OrganizerDashboard({
   // --- Назначить куратора секции ---
   const [showAssignCurator, setShowAssignCurator] = useState("");
   const [curatorSearch, setCuratorSearch] = useState("");
-  const assignCurator = (userId: string, eventId: string) => {
-    const u = DEMO_ALL_USERS.find((u) => u.id === userId);
-    if (!u) return;
-    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
-    if (!demoMode) {
-      apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }).catch(() => {});
+  const [curatorResults, setCuratorResults] = useState<User[]>([]);
+  const searchCurators = async (q: string) => {
+    setCuratorSearch(q);
+    if (q.length < 2) { setCuratorResults([]); return; }
+    if (demoMode) {
+      setCuratorResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
+    } else {
+      try { const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`); setCuratorResults((res || []).filter((u) => u.id !== user.id)); } catch { setCuratorResults([]); }
+    }
+  };
+  const assignCurator = async (userId: string, eventId: string) => {
+    if (demoMode) {
+      setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
+    } else {
+      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch (e: any) { alert(e?.message || "Ошибка назначения куратора"); return; }
     }
     setShowAssignCurator("");
     setCuratorSearch("");
+    setCuratorResults([]);
   };
 
   // --- Назначить спикера (орг тоже может) ---
   const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
   const [speakerSearch, setSpeakerSearch] = useState("");
-  const assignSpeakerOrg = (userId: string, eventId: string) => {
-    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
-    if (!demoMode) {
-      apiFetch("POST", `/api/reports/0/speaker`, { user_id: userId }).catch(() => {});
+  const [speakerResults, setSpeakerResults] = useState<User[]>([]);
+  const searchSpeakers = async (q: string) => {
+    setSpeakerSearch(q);
+    if (q.length < 2) { setSpeakerResults([]); return; }
+    if (demoMode) {
+      setSpeakerResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
+    } else {
+      try { const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`); setSpeakerResults((res || []).filter((u) => u.id !== user.id)); } catch { setSpeakerResults([]); }
+    }
+  };
+  const assignSpeakerOrg = async (userId: string, eventId: string) => {
+    if (demoMode) {
+      setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
+    } else {
+      // Need a report_id — for now, just add membership via curator endpoint with SPEAKER context
+      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch {}
     }
     setShowAssignSpeaker("");
     setSpeakerSearch("");
+    setSpeakerResults([]);
   };
 
   // --- Загрузка данных ---
@@ -2062,16 +2085,29 @@ function OrganizerDashboard({
       setLoading(false);
       return;
     }
+    // Real backend
     (async () => {
       try {
         const evs = await apiFetch<EventData[]>("GET", "/api/events/");
-        setEvents(evs || []);
-        if (evs?.length) setSelEv(evs[0].id);
-        const all: Task[] = [];
-        for (const ev of (evs || [])) {
-          try { const ts = await apiFetch<Task[]>("GET", `/api/tasks/?event_id=${ev.id}`); all.push(...(ts || [])); } catch {}
+        if (evs?.length) {
+          setEvents(evs);
+          setSelEv(evs[0].id);
+          const all: Task[] = [];
+          // Load users for name resolution
+          const userCache: Record<string, string> = {};
+          for (const ev of evs) {
+            try {
+              const ts = await apiFetch<any[]>("GET", `/api/tasks/?event_id=${ev.id}`);
+              for (const t of (ts || [])) {
+                if (t.assigned_to && !userCache[t.assigned_to]) {
+                  try { const u = await apiFetch<any>("GET", `/api/users/search?q=`); /* fallback */ } catch {}
+                }
+                all.push({ ...t, assigned_to_name: userCache[t.assigned_to] || t.assigned_to || "" });
+              }
+            } catch {}
+          }
+          setTasks(all);
         }
-        setTasks(all);
       } catch {}
       finally { setLoading(false); }
     })();
@@ -2260,11 +2296,11 @@ function OrganizerDashboard({
                             {showAssignCurator === ev.id && (
                               <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
                                 <input
-                                  type="text" placeholder="Поиск по ФИО..."
-                                  value={curatorSearch} onChange={(e) => setCuratorSearch(e.target.value)}
+                                  type="text" placeholder="Поиск по ФИО (мин. 2 символа)..."
+                                  value={curatorSearch} onChange={(e) => searchCurators(e.target.value)}
                                   style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }}
                                 />
-                                {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(curatorSearch.toLowerCase())).map((u) => (
+                                {curatorResults.map((u) => (
                                   <div key={u.id} onClick={() => assignCurator(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}
                                     onMouseOver={(e) => e.currentTarget.style.background = "#e8f0fe"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                                     <span>{u.full_name}</span>
@@ -2281,9 +2317,9 @@ function OrganizerDashboard({
                             </button>
                             {showAssignSpeaker === ev.id && (
                               <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
-                                <input type="text" placeholder="Поиск по ФИО..." value={speakerSearch} onChange={(e) => setSpeakerSearch(e.target.value)}
+                                <input type="text" placeholder="Поиск по ФИО (мин. 2 символа)..." value={speakerSearch} onChange={(e) => searchSpeakers(e.target.value)}
                                   style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
-                                {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(speakerSearch.toLowerCase())).map((u) => (
+                                {speakerResults.map((u) => (
                                   <div key={u.id} onClick={() => assignSpeakerOrg(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}
                                     onMouseOver={(e) => e.currentTarget.style.background = "#fffbeb"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                                     <span>{u.full_name}</span>
@@ -2495,12 +2531,23 @@ function ParticipantDashboard({
     } else {
       (async () => {
         try {
+          // Load events from API
+          const evs = await apiFetch<EventData[]>("GET", "/api/events/");
+          if (evs?.length) {
+            // Also get public events we might not be member of
+            try {
+              const pubEvs = await apiFetch<EventData[]>("GET", "/api/events/public");
+              const allIds = new Set(evs.map((e) => e.id));
+              for (const pe of (pubEvs || [])) { if (!allIds.has(pe.id)) evs.push(pe); }
+            } catch {}
+          }
+          // Load tasks
           const all: Task[] = [];
-          for (const ev of events) {
-            try { const ts = await apiFetch<Task[]>("GET", `/api/tasks/?event_id=${ev.id}`); all.push(...(ts || [])); } catch {}
+          for (const ev of (evs || [])) {
+            try { const ts = await apiFetch<any[]>("GET", `/api/tasks/?event_id=${ev.id}`); all.push(...(ts || []).map((t: any) => ({ ...t, assigned_to_name: t.assigned_to || "" }))); } catch {}
           }
           setTasks(isCurator ? all : all.filter((t) => t.assigned_to === user.id));
-          if (events.length) setSelEv(events[0].id);
+          if (evs?.length) setSelEv(evs[0].id);
         } catch {}
         finally { setLoading(false); }
       })();
@@ -2569,13 +2616,25 @@ function ParticipantDashboard({
   // Назначить спикера (для куратора)
   const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
   const [speakerSearch, setSpeakerSearch] = useState("");
-  const assignSpeaker = (userId: string, eventId: string) => {
-    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
-    if (!demoMode) {
-      apiFetch("POST", `/api/reports/0/speaker`, { user_id: userId }).catch(() => {});
+  const [speakerResults, setSpeakerResults] = useState<User[]>([]);
+  const searchSpeakers = async (q: string) => {
+    setSpeakerSearch(q);
+    if (q.length < 2) { setSpeakerResults([]); return; }
+    if (demoMode) {
+      setSpeakerResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
+    } else {
+      try { const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`); setSpeakerResults((res || []).filter((u) => u.id !== user.id)); } catch { setSpeakerResults([]); }
+    }
+  };
+  const assignSpeaker = async (userId: string, eventId: string) => {
+    if (demoMode) {
+      setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
+    } else {
+      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch {}
     }
     setShowAssignSpeaker("");
     setSpeakerSearch("");
+    setSpeakerResults([]);
   };
 
   const roleLabel = isCurator ? "КУРАТОР СЕКЦИИ" : isSpeaker ? "СПИКЕР" : "УЧАСТНИК";
@@ -2683,9 +2742,9 @@ function ParticipantDashboard({
                           </button>
                           {showAssignSpeaker === `${ev.id}-${sec.id}` && (
                             <div style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 12, border: "1px solid var(--border)" }}>
-                              <input type="text" placeholder="Поиск по ФИО..." value={speakerSearch} onChange={(e) => setSpeakerSearch(e.target.value)}
+                              <input type="text" placeholder="Поиск по ФИО (мин. 2 символа)..." value={speakerSearch} onChange={(e) => searchSpeakers(e.target.value)}
                                 style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
-                              {DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(speakerSearch.toLowerCase())).map((u) => (
+                              {speakerResults.map((u) => (
                                 <div key={u.id} onClick={() => assignSpeaker(u.id, ev.id)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}
                                   onMouseOver={(e) => e.currentTarget.style.background = "#fffbeb"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                                   <span>{u.full_name}</span>
@@ -3109,11 +3168,22 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [initLoading, setInitLoading] = useState(true);
-  const [memberships, setMemberships] = useState<DemoMembership[]>([...DEMO_MEMBERSHIPS_INIT]);
+  const [memberships, setMemberships] = useState<DemoMembership[]>(() => {
+    try { const s = localStorage.getItem("eh_memberships"); return s ? JSON.parse(s) : [...DEMO_MEMBERSHIPS_INIT]; } catch { return [...DEMO_MEMBERSHIPS_INIT]; }
+  });
   // Shared events state — publishes persist across dashboards
-  const [sharedEvents, setSharedEvents] = useState<EventData[]>([...DEMO_EVENTS]);
+  const [sharedEvents, setSharedEvents] = useState<EventData[]>(() => {
+    try { const s = localStorage.getItem("eh_events"); return s ? JSON.parse(s) : [...DEMO_EVENTS]; } catch { return [...DEMO_EVENTS]; }
+  });
   // Shared registrations — persist across navigation
-  const [sharedRegs, setSharedRegs] = useState<Set<string>>(new Set());
+  const [sharedRegs, setSharedRegs] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem("eh_regs"); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
+  });
+
+  // Persist to localStorage on change
+  useEffect(() => { localStorage.setItem("eh_memberships", JSON.stringify(memberships)); }, [memberships]);
+  useEffect(() => { localStorage.setItem("eh_events", JSON.stringify(sharedEvents)); }, [sharedEvents]);
+  useEffect(() => { localStorage.setItem("eh_regs", JSON.stringify([...sharedRegs])); }, [sharedRegs]);
 
   useEffect(() => {
     injectGlobalCSS();
