@@ -5,6 +5,7 @@ import {
   Route,
   Navigate,
   useNavigate,
+  useParams,
 } from "react-router-dom";
 
 import type {
@@ -79,16 +80,16 @@ body {
 
 a { text-decoration: none; color: inherit; }
 
-.dashboard-wrapper { display: flex; min-height: 100vh; }
+.dashboard-wrapper { display: flex; min-height: calc(100vh - 58px); }
 
 .dashboard-sidebar {
   width: 260px; background: white; border-right: 1.5px solid var(--border);
-  padding: 28px 20px; display: flex; flex-direction: column; gap: 24px;
-  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  padding: 20px 20px; display: flex; flex-direction: column; gap: 20px;
+  position: sticky; top: 58px; height: calc(100vh - 58px); overflow-y: auto;
 }
 
 .dashboard-main-content {
-  flex: 1; padding: 32px 36px; overflow-y: auto; min-height: 100vh;
+  flex: 1; padding: 32px 36px; overflow-y: auto; min-height: calc(100vh - 58px);
 }
 
 .sidebar-nav-list { display: flex; flex-direction: column; gap: 4px; }
@@ -177,18 +178,89 @@ a { text-decoration: none; color: inherit; }
 
 .landing-hero {
   min-height: 100vh; display: flex; flex-direction: column;
-  background: linear-gradient(160deg, #0d1b3e 0%, #162557 40%, #1e3a8a 70%, #2563eb 100%);
-  color: white; position: relative; overflow: hidden;
+  background: linear-gradient(180deg, #e8f4fc 0%, #d4ecfb 40%, #c3e4f8 100%);
+  color: var(--text-main); position: relative; overflow: hidden;
 }
 .landing-hero::before {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(circle at 80% 20%, rgba(59,130,246,0.3) 0%, transparent 60%),
-              radial-gradient(circle at 20% 80%, rgba(245,158,11,0.15) 0%, transparent 50%);
+  background: radial-gradient(circle at 85% 30%, rgba(59,130,246,0.12) 0%, transparent 55%),
+              radial-gradient(circle at 15% 70%, rgba(59,130,246,0.08) 0%, transparent 50%);
   pointer-events: none;
 }
-.landing-nav {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 20px 48px; position: relative; z-index: 2;
+.landing-topbar {
+  position: sticky; top: 0; z-index: 100; padding: 16px 48px;
+  display: flex; justify-content: center;
+  background: rgba(255,255,255,0.65); backdrop-filter: blur(16px);
+}
+.landing-topbar.on-landing {
+  background: transparent; backdrop-filter: none;
+}
+.landing-topbar.on-dashboard {
+  background: rgba(255,255,255,0.85); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border); padding: 10px 48px;
+}
+.landing-nav-pill {
+  display: flex; align-items: center; justify-content: space-between;
+  background: rgba(255,255,255,0.85); backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(255,255,255,0.7); border-radius: 100px;
+  padding: 10px 28px; width: 100%; max-width: 900px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+}
+.landing-nav-links {
+  display: flex; gap: 28px; align-items: center;
+}
+.landing-nav-links a {
+  font-size: 13px; font-weight: 700; color: var(--text-main);
+  text-decoration: none; letter-spacing: 0.3px; transition: color 0.2s;
+  cursor: pointer; white-space: nowrap;
+}
+.landing-nav-links a:hover { color: var(--primary); }
+.landing-nav-logo {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.landing-nav-logo-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: var(--primary); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 16px;
+}
+.landing-nav-logo-text {
+  font-weight: 900; font-size: 14px; color: var(--primary-dark);
+  line-height: 1.15; white-space: nowrap;
+}
+.landing-nav-user {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 1.5px solid var(--border); background: white;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: border-color 0.2s; flex-shrink: 0;
+}
+.landing-nav-user:hover { border-color: var(--primary); }
+.nav-user-info {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.nav-user-name {
+  font-size: 13px; font-weight: 700; color: var(--primary-dark);
+  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nav-user-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--primary); color: white; font-weight: 900; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.nav-logout-btn {
+  padding: 6px 14px; background: #fff1f1; color: #ef4444;
+  border: 1px solid #fecaca; border-radius: 100;
+  font-weight: 700; font-size: 11px; cursor: pointer;
+  font-family: 'Nunito', sans-serif; white-space: nowrap;
+  transition: background 0.15s;
+}
+.nav-logout-btn:hover { background: #fee2e2; }
+.event-detail-page {
+  max-width: 900px; margin: 0 auto; padding: 32px 24px;
+}
+.comment-card {
+  background: white; border-radius: 12px; padding: 14px 18px;
+  border: 1.5px solid var(--border); margin-bottom: 10px;
 }
 .landing-content {
   flex: 1; display: flex; align-items: center; justify-content: center;
@@ -210,7 +282,10 @@ a { text-decoration: none; color: inherit; }
   .sidebar-nav-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
   .dashboard-main-content { padding: 20px 16px; }
   .kanban-board { grid-template-columns: 1fr; }
-  .landing-nav { padding: 16px 20px; }
+  .landing-topbar { padding: 12px 16px; }
+  .landing-nav-pill { padding: 8px 16px; max-width: 100%; }
+  .landing-nav-links { gap: 14px; }
+  .landing-nav-links a { font-size: 11px; }
   .landing-content { padding: 0 20px; }
   .landing-features { padding: 40px 20px; }
 }
@@ -327,6 +402,366 @@ export function EmptyState({
         {title}
       </div>
       <div style={{ fontSize: 14 }}>{description}</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GLOBAL TOP BAR — отображается на ВСЕХ страницах
+// ═══════════════════════════════════════════════════════════════
+function TopBar({ user, onLogout, variant = "default" }: { user: User | null; onLogout: () => void; variant?: "landing" | "default" }) {
+  const navigate = useNavigate();
+  return (
+    <div className={`landing-topbar${variant === "landing" ? " on-landing" : " on-dashboard"}`}>
+      <div className="landing-nav-pill">
+        <div className="landing-nav-logo" style={{ cursor: "pointer" }} onClick={() => navigate("/")}>
+          <div className="landing-nav-logo-icon">EH</div>
+          <div className="landing-nav-logo-text">EVENT<br/>HUB</div>
+        </div>
+        <nav className="landing-nav-links">
+          <a onClick={() => navigate("/")}>ГЛАВНАЯ</a>
+          <a onClick={() => navigate("/events")}>МЕРОПРИЯТИЯ</a>
+          {user && <a onClick={() => navigate("/dashboard")}>ЛИЧНЫЙ КАБИНЕТ</a>}
+          <a onClick={() => navigate("/events")}>КОНТАКТЫ</a>
+        </nav>
+        {user ? (
+          <div className="nav-user-info">
+            <div className="nav-user-avatar">{user.full_name[0]}</div>
+            <span className="nav-user-name">{user.full_name}</span>
+            <button className="nav-logout-btn" onClick={onLogout}>Выйти</button>
+          </div>
+        ) : (
+          <div className="landing-nav-user" onClick={() => navigate("/login")}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EVENTS LIST PAGE — публичный список мероприятий (/events)
+// ═══════════════════════════════════════════════════════════════
+function EventsListPage({ user, onLogout, demoMode }: { user: User | null; onLogout: () => void; demoMode: boolean }) {
+  const navigate = useNavigate();
+  const [events, setEvents] = useState<EventData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (demoMode || !user) {
+      setEvents(DEMO_EVENTS.filter((e) => e.status === "PUBLISHED"));
+      setLoading(false);
+    } else {
+      (async () => {
+        try {
+          const evs = await apiFetch<EventData[]>("GET", "/api/events/");
+          setEvents((evs || []).filter((e: EventData) => e.status === "PUBLISHED"));
+        } catch {
+          setEvents(DEMO_EVENTS.filter((e) => e.status === "PUBLISHED"));
+        }
+        finally { setLoading(false); }
+      })();
+    }
+  }, [demoMode, user]);
+
+  return (
+    <div>
+      <TopBar user={user} onLogout={onLogout} />
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px" }}>
+        <h1 style={{ fontWeight: 900, fontSize: 26, color: "var(--primary-dark)", marginBottom: 8 }}>Мероприятия</h1>
+        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 28 }}>Выберите мероприятие для просмотра программы и регистрации</p>
+        {loading ? <Spinner /> : (
+          <div style={{ display: "grid", gap: 16 }}>
+            {events.map((ev) => (
+              <div
+                key={ev.id}
+                onClick={() => navigate(`/events/${ev.id}`)}
+                style={{
+                  background: "white", borderRadius: 16, padding: "24px 28px",
+                  boxShadow: "0 2px 12px rgba(74,89,138,0.07)",
+                  border: "1.5px solid var(--border)", cursor: "pointer",
+                  transition: "border-color 0.2s, box-shadow 0.2s",
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(37,99,235,0.12)"; }}
+                onMouseOut={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "0 2px 12px rgba(74,89,138,0.07)"; }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ fontWeight: 800, fontSize: 18, color: "var(--primary-dark)", marginBottom: 6 }}>{ev.title}</h3>
+                    {ev.description && <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.6 }}>{ev.description}</p>}
+                    <div style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--text-muted)", fontWeight: 600, flexWrap: "wrap", alignItems: "center" }}>
+                      {ev.start_date && <span>📅 {ev.start_date} — {ev.end_date}</span>}
+                      <span style={{ padding: "2px 10px", borderRadius: 100, background: "#f0fdf4", color: "#16a34a", fontWeight: 800 }}>Опубликовано</span>
+                    </div>
+                  </div>
+                  <div style={{ color: "var(--primary)", fontWeight: 800, fontSize: 13, flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                    Подробнее →
+                  </div>
+                </div>
+              </div>
+            ))}
+            {events.length === 0 && <EmptyState icon="📋" title="Нет мероприятий" description="Скоро здесь появятся новые мероприятия." />}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EVENT DETAIL PAGE — страница мероприятия (/events/:id)
+// Секции, доклады, регистрация, комментарии
+// ═══════════════════════════════════════════════════════════════
+interface CommentItem {
+  id: string;
+  user_name: string;
+  text: string;
+  created_at: string;
+  report_id: string;
+}
+
+const DEMO_COMMENTS: CommentItem[] = [
+  { id: "c1", user_name: "Иван Участников", text: "Очень жду этот доклад! Тема безопасности сейчас максимально актуальна.", created_at: "2026-03-17T10:30:00Z", report_id: "r1" },
+  { id: "c2", user_name: "Алексей Спикеров", text: "Будет ли запись трансляции?", created_at: "2026-03-17T14:00:00Z", report_id: "r1" },
+  { id: "c3", user_name: "Куратор Секционов", text: "Да, все доклады будут записаны.", created_at: "2026-03-17T14:10:00Z", report_id: "r1" },
+  { id: "c4", user_name: "Иван Участников", text: "Интересно услышать про реальные кейсы внедрения ML на производстве.", created_at: "2026-03-18T09:00:00Z", report_id: "r3" },
+];
+
+function EventDetailPage({ user, onLogout, demoMode }: { user: User | null; onLogout: () => void; demoMode: boolean }) {
+  const navigate = useNavigate();
+  const { id: eventId = "" } = useParams<{ id: string }>();
+
+  const [event, setEvent] = useState<EventData | null>(null);
+  const [sections, setSections] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [registered, setRegistered] = useState(false);
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [commentText, setCommentText] = useState("");
+  const [activeReportComments, setActiveReportComments] = useState<string>("");
+  const [feedback, setFeedback] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (demoMode || !user) {
+      const ev = DEMO_EVENTS.find((e) => e.id === eventId);
+      setEvent(ev || null);
+      setSections(DEMO_SECTIONS_PROGRAM[eventId] || []);
+      setComments([...DEMO_COMMENTS]);
+      setLoading(false);
+    } else {
+      (async () => {
+        try {
+          const ev = await apiFetch<EventData>("GET", `/api/events/${eventId}`);
+          setEvent(ev);
+          const prog = await apiFetch<any>("GET", `/api/events/${eventId}/program`);
+          setSections(prog.sections || []);
+        } catch {
+          const ev = DEMO_EVENTS.find((e) => e.id === eventId);
+          setEvent(ev || null);
+          setSections(DEMO_SECTIONS_PROGRAM[eventId] || []);
+          setComments([...DEMO_COMMENTS]);
+        }
+        finally { setLoading(false); }
+      })();
+    }
+  }, [eventId, demoMode, user]);
+
+  const handleRegister = async () => {
+    if (registered) return;
+    if (!user) { navigate("/login"); return; }
+    if (!demoMode) {
+      try { await apiFetch("POST", `/api/events/${eventId}/register`); } catch {}
+    }
+    setRegistered(true);
+  };
+
+  const addComment = async (reportId: string) => {
+    if (!commentText.trim()) return;
+    if (!user) { navigate("/login"); return; }
+    const newComment: CommentItem = {
+      id: `c-${Date.now()}`,
+      user_name: user.full_name,
+      text: commentText.trim(),
+      created_at: new Date().toISOString(),
+      report_id: reportId,
+    };
+    if (!demoMode) {
+      try { await apiFetch("POST", `/api/reports/${reportId}/comments`, { text: commentText.trim() }); } catch {}
+    }
+    setComments((prev) => [...prev, newComment]);
+    setCommentText("");
+  };
+
+  const setRating = async (reportId: string, rating: number) => {
+    if (!user) { navigate("/login"); return; }
+    setFeedback((prev) => ({ ...prev, [reportId]: rating }));
+    if (!demoMode) {
+      try { await apiFetch("POST", `/api/reports/${reportId}/feedback`, { rating }); } catch {}
+    }
+  };
+
+  const fmtTime = (iso?: string) => {
+    if (!iso) return "";
+    return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const fmtDate = (iso: string) => {
+    return new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+
+  if (loading) return (<div><TopBar user={user} onLogout={onLogout} /><div style={{ padding: 48 }}><Spinner /></div></div>);
+  if (!event) return (<div><TopBar user={user} onLogout={onLogout} /><div className="event-detail-page"><EmptyState icon="❌" title="Мероприятие не найдено" description="Проверьте ссылку или вернитесь к списку." /><button onClick={() => navigate("/events")} style={{ display: "block", margin: "20px auto", padding: "10px 24px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>← К мероприятиям</button></div></div>);
+
+  return (
+    <div>
+      <TopBar user={user} onLogout={onLogout} />
+      <div className="event-detail-page">
+        {/* Кнопка назад */}
+        <button onClick={() => navigate("/events")} style={{ padding: "6px 16px", background: "var(--bg-light)", color: "var(--text-muted)", border: "1.5px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif", marginBottom: 20 }}>
+          ← Все мероприятия
+        </button>
+
+        {/* Шапка мероприятия */}
+        <div style={{ background: "white", borderRadius: 16, padding: "28px 32px", border: "1.5px solid var(--border)", marginBottom: 24, boxShadow: "0 2px 12px rgba(74,89,138,0.07)" }}>
+          <h1 style={{ fontWeight: 900, fontSize: 24, color: "var(--primary-dark)", marginBottom: 8 }}>{event.title}</h1>
+          {event.description && <p style={{ fontSize: 15, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 14 }}>{event.description}</p>}
+          <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>📅 {event.start_date} — {event.end_date}</span>
+            <button
+              onClick={handleRegister}
+              style={{
+                padding: "10px 24px", borderRadius: 100, fontWeight: 800, fontSize: 13,
+                cursor: "pointer", fontFamily: "Nunito, sans-serif", border: "none",
+                background: registered ? "#f0fdf4" : "#16a34a",
+                color: registered ? "#16a34a" : "white",
+                ...(registered ? { border: "1.5px solid #bbf7d0" } : {}),
+              }}
+            >
+              {registered ? "✅ Вы зарегистрированы" : user ? "Зарегистрироваться" : "Войти для регистрации"}
+            </button>
+            {registered && (
+              <span style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700 }}>
+                💬 Вы добавлены в чат мероприятия
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Секции и доклады */}
+        <h2 style={{ fontWeight: 900, fontSize: 20, color: "var(--primary-dark)", marginBottom: 16 }}>Программа</h2>
+        {sections.length === 0 ? (
+          <div style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 600, textAlign: "center", padding: 32 }}>
+            Программа пока не опубликована
+          </div>
+        ) : (
+          sections.map((sec: any) => (
+            <div key={sec.id} style={{ marginBottom: 24 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: "var(--primary)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                📌 {sec.title}
+                {sec.location && <span style={{ color: "var(--text-muted)", fontWeight: 600, fontSize: 13 }}>· 📍 {sec.location}</span>}
+                {sec.format && <span style={{ padding: "2px 8px", background: "var(--bg-medium)", borderRadius: 100, fontSize: 11, fontWeight: 700, color: "var(--primary)" }}>{sec.format}</span>}
+              </div>
+
+              <div style={{ display: "grid", gap: 12 }}>
+                {(sec.reports || []).map((r: any) => {
+                  const reportComments = comments.filter((c) => c.report_id === r.id);
+                  const isOpen = activeReportComments === r.id;
+                  const rating = feedback[r.id] || 0;
+
+                  return (
+                    <div key={r.id} style={{ background: "white", borderRadius: 14, border: "1.5px solid var(--border)", overflow: "hidden" }}>
+                      {/* Доклад */}
+                      <div style={{ padding: "16px 20px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                          <div style={{ flex: 1 }}>
+                            {r.start_time && (
+                              <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 4 }}>
+                                🕐 {fmtTime(r.start_time)}{r.end_time ? ` – ${fmtTime(r.end_time)}` : ""}
+                              </div>
+                            )}
+                            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", marginBottom: 4 }}>{r.title}</div>
+                            {r.speaker_name && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>🎤 {r.speaker_name}</div>}
+                          </div>
+                          {/* Оценка */}
+                          {user && (
+                            <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <span
+                                  key={star}
+                                  onClick={() => setRating(r.id, star)}
+                                  style={{ cursor: "pointer", fontSize: 18, color: star <= rating ? "#f59e0b" : "#e2e8f0", transition: "color 0.15s" }}
+                                >
+                                  ★
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                          <button
+                            onClick={() => setActiveReportComments(isOpen ? "" : r.id)}
+                            style={{ padding: "6px 14px", background: isOpen ? "var(--bg-medium)" : "var(--bg-light)", color: isOpen ? "var(--primary)" : "var(--text-muted)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                          >
+                            💬 Комментарии ({reportComments.length}) {isOpen ? "↑" : "↓"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Комментарии */}
+                      {isOpen && (
+                        <div style={{ borderTop: "1px solid var(--border)", padding: "14px 20px", background: "#fafbfc" }}>
+                          {reportComments.length === 0 && (
+                            <div style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: 12 }}>
+                              Пока нет комментариев. Будьте первым!
+                            </div>
+                          )}
+                          {reportComments.map((c) => (
+                            <div key={c.id} className="comment-card">
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                                <span style={{ fontWeight: 800, fontSize: 13, color: "var(--primary-dark)" }}>{c.user_name}</span>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{fmtDate(c.created_at)}</span>
+                              </div>
+                              <div style={{ fontSize: 14, color: "var(--text-main)", lineHeight: 1.5 }}>{c.text}</div>
+                            </div>
+                          ))}
+                          {/* Поле ввода комментария */}
+                          {user ? (
+                            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                              <input
+                                type="text"
+                                placeholder="Написать комментарий..."
+                                value={activeReportComments === r.id ? commentText : ""}
+                                onChange={(e) => setCommentText(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && addComment(r.id)}
+                                style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }}
+                              />
+                              <button
+                                onClick={() => addComment(r.id)}
+                                style={{ padding: "10px 18px", background: "var(--primary)", color: "white", border: "none", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", whiteSpace: "nowrap" }}
+                              >
+                                Отправить
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ textAlign: "center", marginTop: 10 }}>
+                              <button onClick={() => navigate("/login")} style={{ padding: "8px 20px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                                Войти для комментирования
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -483,7 +918,7 @@ const DEMO_TASKS: Task[] = [
 // ═══════════════════════════════════════════════════════════════
 // 1. LANDING PAGE  (FIX #5 — возвращён лендинг)
 // ═══════════════════════════════════════════════════════════════
-function LandingPage() {
+function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => void }) {
   const navigate = useNavigate();
 
   const features = [
@@ -499,49 +934,7 @@ function LandingPage() {
     <div>
       {/* HERO */}
       <div className="landing-hero">
-        <nav className="landing-nav">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 28 }}>🚀</span>
-            <span style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.5px" }}>
-              EventHub
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button
-              onClick={() => navigate("/login")}
-              style={{
-                padding: "10px 24px",
-                background: "rgba(255,255,255,0.1)",
-                color: "white",
-                border: "1.5px solid rgba(255,255,255,0.25)",
-                borderRadius: 100,
-                fontWeight: 800,
-                fontSize: 14,
-                cursor: "pointer",
-                fontFamily: "Nunito, sans-serif",
-                backdropFilter: "blur(8px)",
-              }}
-            >
-              Войти
-            </button>
-            <button
-              onClick={() => navigate("/login")}
-              style={{
-                padding: "10px 24px",
-                background: "white",
-                color: "var(--primary)",
-                border: "none",
-                borderRadius: 100,
-                fontWeight: 800,
-                fontSize: 14,
-                cursor: "pointer",
-                fontFamily: "Nunito, sans-serif",
-              }}
-            >
-              Начать бесплатно
-            </button>
-          </div>
-        </nav>
+        <TopBar user={user} onLogout={onLogout} variant="landing" />
 
         <div className="landing-content">
           <div style={{ maxWidth: 680, animation: "fadeInUp 0.8s ease-out" }}>
@@ -549,7 +942,7 @@ function LandingPage() {
               style={{
                 fontSize: 13,
                 fontWeight: 800,
-                color: "rgba(255,255,255,0.6)",
+                color: "var(--primary)",
                 textTransform: "uppercase",
                 letterSpacing: 2,
                 marginBottom: 16,
@@ -564,16 +957,17 @@ function LandingPage() {
                 lineHeight: 1.15,
                 marginBottom: 20,
                 letterSpacing: "-1px",
+                color: "var(--primary-dark)",
               }}
             >
               Организуйте форумы,{" "}
-              <span style={{ color: "#f59e0b" }}>конференции</span> и хакатоны в
+              <span style={{ color: "var(--primary)" }}>конференции</span> и хакатоны в
               одном месте
             </h1>
             <p
               style={{
                 fontSize: 18,
-                color: "rgba(255,255,255,0.75)",
+                color: "var(--text-muted)",
                 lineHeight: 1.7,
                 marginBottom: 36,
                 maxWidth: 520,
@@ -584,21 +978,21 @@ function LandingPage() {
             </p>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <button
-                onClick={() => navigate("/login")}
+                onClick={() => navigate("/events")}
                 style={{
                   padding: "14px 36px",
-                  background: "white",
-                  color: "var(--primary-dark)",
+                  background: "var(--primary)",
+                  color: "white",
                   border: "none",
                   borderRadius: 100,
                   fontWeight: 900,
                   fontSize: 16,
                   cursor: "pointer",
                   fontFamily: "Nunito, sans-serif",
-                  boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+                  boxShadow: "0 4px 20px rgba(37,99,235,0.3)",
                 }}
               >
-                Попробовать Demo →
+                Смотреть мероприятия →
               </button>
               <button
                 onClick={() =>
@@ -608,9 +1002,9 @@ function LandingPage() {
                 }
                 style={{
                   padding: "14px 36px",
-                  background: "transparent",
-                  color: "white",
-                  border: "1.5px solid rgba(255,255,255,0.3)",
+                  background: "white",
+                  color: "var(--primary-dark)",
+                  border: "1.5px solid var(--border)",
                   borderRadius: 100,
                   fontWeight: 800,
                   fontSize: 16,
@@ -628,14 +1022,14 @@ function LandingPage() {
                 { n: "1", l: "Вместо 5 сервисов" },
               ].map((s) => (
                 <div key={s.l}>
-                  <div style={{ fontSize: 28, fontWeight: 900, color: "#f59e0b" }}>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: "var(--primary)" }}>
                     {s.n}
                   </div>
                   <div
                     style={{
                       fontSize: 12,
                       fontWeight: 700,
-                      color: "rgba(255,255,255,0.5)",
+                      color: "var(--text-muted)",
                       textTransform: "uppercase",
                     }}
                   >
@@ -711,6 +1105,7 @@ function LandingPage() {
 
       {/* FOOTER CTA */}
       <div
+        id="footer-cta"
         style={{
           padding: "64px 48px",
           background: "var(--primary-dark)",
@@ -731,7 +1126,7 @@ function LandingPage() {
           Создайте первое мероприятие прямо сейчас
         </p>
         <button
-          onClick={() => navigate("/login")}
+          onClick={() => navigate("/events")}
           style={{
             padding: "14px 40px",
             background: "white",
@@ -744,7 +1139,7 @@ function LandingPage() {
             fontFamily: "Nunito, sans-serif",
           }}
         >
-          Войти в EventHub
+          Смотреть мероприятия
         </button>
         <div
           style={{
@@ -1651,7 +2046,9 @@ function OrganizerDashboard({
   ];
 
   return (
-    <div className="dashboard-wrapper">
+    <div>
+      <TopBar user={user} onLogout={onLogout} />
+      <div className="dashboard-wrapper">
       {/* SIDEBAR */}
       <aside className="dashboard-sidebar">
         <div style={{ textAlign: "center" }}>
@@ -1708,13 +2105,6 @@ function OrganizerDashboard({
             onClick={() => navigate("/create-event")}
           >
             <span style={{ marginRight: 10 }}>➕</span>Создать мероприятие
-          </button>
-          <button
-            className="nav-link"
-            style={{ marginTop: 16, background: "#fff1f1", color: "#ef4444" }}
-            onClick={onLogout}
-          >
-            <span style={{ marginRight: 8 }}>🚪</span>Выйти
           </button>
         </nav>
       </aside>
@@ -1884,6 +2274,7 @@ function OrganizerDashboard({
         )}
       </main>
     </div>
+    </div>
   );
 }
 
@@ -1935,7 +2326,9 @@ function ParticipantDashboard({
   ];
 
   return (
-    <div className="dashboard-wrapper">
+    <div>
+      <TopBar user={user} onLogout={onLogout} />
+      <div className="dashboard-wrapper">
       <aside className="dashboard-sidebar">
         <div style={{ textAlign: "center" }}>
           <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#16a34a", color: "white", fontSize: 26, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
@@ -1952,9 +2345,6 @@ function ParticipantDashboard({
               <span style={{ marginRight: 8 }}>{i.icon}</span>{i.label}
             </button>
           ))}
-          <button className="nav-link" style={{ marginTop: 16, background: "#fff1f1", color: "#ef4444" }} onClick={onLogout}>
-            <span style={{ marginRight: 8 }}>🚪</span>Выйти
-          </button>
         </nav>
       </aside>
 
@@ -1999,6 +2389,7 @@ function ParticipantDashboard({
           </>
         )}
       </main>
+    </div>
     </div>
   );
 }
@@ -2409,8 +2800,14 @@ function AppContent() {
 
   return (
     <Routes>
-      {/* FIX #5: лендинг на / */}
-      <Route path="/" element={user ? <Navigate to="/dashboard" /> : <LandingPage />} />
+      {/* Главная — всегда лендинг */}
+      <Route path="/" element={<LandingPage user={user} onLogout={handleLogout} />} />
+
+      {/* Публичный список мероприятий */}
+      <Route path="/events" element={<EventsListPage user={user} onLogout={handleLogout} demoMode={demoMode} />} />
+
+      {/* Страница мероприятия — секции, доклады, комментарии, регистрация */}
+      <Route path="/events/:id" element={<EventDetailPage user={user} onLogout={handleLogout} demoMode={demoMode} />} />
 
       <Route
         path="/login"
