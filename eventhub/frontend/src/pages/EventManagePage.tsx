@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { eventsAPI, tasksAPI } from "../api/apiClient";
-import type { Task, TaskStatus, EventData as EventItem, EventStatus } from "../api/apiClient";
+import { eventsAPI, tasksAPI } from "../api/apiClient.ts";
+import type { Task, TaskStatus, EventData as EventItem, EventStatus } from "../api/apiClient.ts";
 // -----------------------------------------------------------
 // ТИПЫ
 // -----------------------------------------------------------

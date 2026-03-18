@@ -1,1503 +1,2268 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  BrowserRouter as Router,
+  BrowserRouter,
   Routes,
   Route,
-  Link,
-  useNavigate,
-  useParams,
   Navigate,
+  useNavigate,
 } from "react-router-dom";
-import "./App.css";
-import { authAPI, eventsAPI, tasksAPI, participantsAPI } from "./api/apiClient";
-import type { User, Task, TaskStatus, CalendarItem } from "./api/apiClient";
-import { ScheduleTab } from "./components/dashboard/ScheduleTab";
-import { MyReportTab } from "./components/dashboard/MyReportTab";
+
+import type {
+  User,
+  Task,
+  TaskStatus,
+  Event as EventData,
+  GlobalRole,
+  ChatRoom,
+  ChatMessage,
+  ChatSocketEvent,
+} from "./api/apiClient";
+
+import {
+  authAPI,
+  eventsAPI,
+  tasksAPI,
+  participantsAPI,
+  chatAPI,
+  createChatSocket,
+  usersAPI,
+} from "./api/apiClient";
+
+import { CuratorDashboard } from "./components/dashboard/CuratorDashboard";
+import { CreateEventPage } from "./pages/CreateEventPage";
 import { ReportPage } from "./pages/ReportPage";
-import { Messenger } from "./components/messenger/Messenger";
-import { EventManagePage } from "./pages/EventManagePage";
 
-// -----------------------------------------------------------
-// ТИПЫ
-// -----------------------------------------------------------
-interface EventItem {
-  id: string;
-  title: string;
-  description: string;
-  start_date: string;
-  end_date: string;
-  owner_id: string;
-  status: string;
-  readiness_percent?: number;
+// ═══════════════════════════════════════════════════════════════
+// GLOBAL CSS
+// ═══════════════════════════════════════════════════════════════
+const GLOBAL_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+
+:root {
+  --primary: #2563eb;
+  --primary-dark: #0d1b3e;
+  --primary-light: #3b82f6;
+  --accent: #f59e0b;
+  --bg-light: #f1f5f9;
+  --bg-medium: #e8f0fe;
+  --border: #e2e8f0;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --success: #16a34a;
+  --danger: #ef4444;
 }
 
-// -----------------------------------------------------------
-// DEMO DATA
-// -----------------------------------------------------------
-const DEMO_USERS: Record<string, User & { password: string }> = {
-  "admin@it.ru": {
-    id: "u1", email: "admin@it.ru", password: "admin",
-    full_name: "Михаил Полунин", global_role: "ORGANIZER",
-    organization: "ИТ-Кластер Сибири",
-  },
-  "user@it.ru": {
-    id: "u2", email: "user@it.ru", password: "user",
-    full_name: "Иван Участников", global_role: "PARTICIPANT",
-    organization: "ОмГТУ",
-  },
-};
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-const DEMO_EVENTS: EventItem[] = [
-  {
-    id: "e1", title: "ИТ-Форум 2026", status: "PUBLISHED", owner_id: "u1",
-    description: "Главное событие цифровой индустрии Сибири.",
-    start_date: "2026-03-19", end_date: "2026-03-20", readiness_percent: 72,
-  },
-  {
-    id: "e2", title: "Хакатон EventHub", status: "PUBLISHED", owner_id: "u1",
-    description: "48-часовой хакатон по разработке платформы EventHub.",
-    start_date: "2026-03-16", end_date: "2026-03-18", readiness_percent: 95,
-  },
-  {
-    id: "e3", title: "Робофест Омск 2026", status: "DRAFT", owner_id: "u1",
-    description: "Городской чемпионат по робототехнике.",
-    start_date: "2026-04-10", end_date: "2026-04-11", readiness_percent: 30,
-  },
-];
-
-// Для календаря — задачи/события с датой day/month/year
-interface CalendarEntry {
-  id: string;
-  title: string;
-  type: "EVENT" | "TASK";
-  day: number;
-  month: number; // 0-indexed
-  year: number;
-  time?: string;
-  status?: TaskStatus;
+body {
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg-light);
+  color: var(--text-main);
+  min-height: 100vh;
 }
 
-const DEMO_CALENDAR: CalendarEntry[] = [
-  { id: "c1", title: "ИТ-Форум 2026 — открытие", type: "EVENT", day: 19, month: 2, year: 2026, time: "10:00" },
-  { id: "c2", title: "Секция ИнфоБез", type: "EVENT", day: 19, month: 2, year: 2026, time: "12:00" },
-  { id: "c3", title: "Хакатон — финал", type: "EVENT", day: 18, month: 2, year: 2026, time: "18:00" },
-  { id: "c4", title: "Хакатон — старт", type: "EVENT", day: 16, month: 2, year: 2026, time: "09:00" },
-  { id: "c5", title: "Подготовить презентацию", type: "TASK", day: 17, month: 2, year: 2026, status: "TODO" },
-  { id: "c6", title: "Воркшоп по ML", type: "EVENT", day: 20, month: 2, year: 2026, time: "14:00" },
-];
+a { text-decoration: none; color: inherit; }
 
-// Задачи участника (только его)
-const DEMO_MY_TASKS: Task[] = [
-  { id: "mt1", event_id: "e2", title: "Подготовить презентацию", status: "TODO", assigned_to: "u2", created_by: "u1", due_date: "2026-03-17" },
-  { id: "mt2", event_id: "e2", title: "Изучить документацию FastAPI", status: "IN_PROGRESS", assigned_to: "u2", created_by: "u1", due_date: "2026-03-16" },
-  { id: "mt3", event_id: "e1", title: "Зарегистрироваться на секцию", status: "DONE", assigned_to: "u2", created_by: "u1", due_date: "2026-03-15" },
-];
+.dashboard-wrapper { display: flex; min-height: 100vh; }
 
-// Задачи организатора (все задачи)
-const DEMO_ALL_TASKS: Task[] = [
-  { id: "t1", event_id: "e1", title: "Подготовить бейджи", status: "DONE", assigned_to: "u1", created_by: "u1", due_date: "2026-03-18" },
-  { id: "t2", event_id: "e1", title: "Настроить проектор в зале А", status: "IN_PROGRESS", assigned_to: "u1", created_by: "u1", due_date: "2026-03-19" },
-  { id: "t3", event_id: "e1", title: "Согласовать кейтеринг", status: "IN_PROGRESS", assigned_to: "u1", created_by: "u1", due_date: "2026-03-17" },
-  { id: "t4", event_id: "e1", title: "Разослать программу участникам", status: "TODO", assigned_to: "u1", created_by: "u1", due_date: "2026-03-18" },
-  { id: "t5", event_id: "e1", title: "Подготовить сертификаты", status: "TODO", assigned_to: "u1", created_by: "u1", due_date: "2026-03-20" },
-];
-
-const DEMO_PROGRAM: Record<string, any[]> = {
-  "e1": [
-    { id: "r1", title: "Открытие: Будущее ИИ", start_time: "10:00", description: "Зал Сибирь" },
-    { id: "r2", title: "Секция ИнфоБез", start_time: "12:00", description: "Зал А" },
-    { id: "r3", title: "Воркшоп по ML", start_time: "14:00", description: "Зал Б" },
-  ],
-  "e2": [
-    { id: "r4", title: "Открытие хакатона", start_time: "09:00", description: "Брифинг команд" },
-    { id: "r5", title: "Презентация проектов", start_time: "18:00", description: "Финальная защита" },
-  ],
-  "e3": [],
-};
-
-// -----------------------------------------------------------
-// ХУК АВТОРИЗАЦИИ
-// -----------------------------------------------------------
-function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [demoMode, setDemoMode] = useState(false);
-
-  useEffect(() => {
-    const demoUser = sessionStorage.getItem("demo_user");
-    if (demoUser) {
-      setUser(JSON.parse(demoUser));
-      setDemoMode(true);
-      setLoading(false);
-      return;
-    }
-    const token = localStorage.getItem("access_token");
-    if (!token) { setLoading(false); return; }
-    authAPI.me()
-      .then((res) => setUser(res.data))
-      .catch(() => localStorage.removeItem("access_token"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const logout = () => {
-    localStorage.removeItem("access_token");
-    sessionStorage.removeItem("demo_user");
-    setDemoMode(false);
-    setUser(null);
-  };
-
-  return { user, setUser, loading, logout, demoMode, setDemoMode };
+.dashboard-sidebar {
+  width: 260px; background: white; border-right: 1.5px solid var(--border);
+  padding: 28px 20px; display: flex; flex-direction: column; gap: 24px;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
 
-// -----------------------------------------------------------
-// ШАПКА
-// -----------------------------------------------------------
-const SiteHeader = ({ user, onLogout, demoMode }: { user: User | null; onLogout: () => void; demoMode: boolean }) => (
-  <>
-    <div className="top-line" />
-    {demoMode && (
-      <div style={{
-        position: "fixed", top: 5, left: 0, right: 0, zIndex: 2003,
-        background: "#f59e0b", color: "white", textAlign: "center",
-        padding: "6px", fontSize: "13px", fontWeight: 700,
-      }}>
-        🔧 DEMO РЕЖИМ — бэкенд недоступен, тестовые данные
-      </div>
-    )}
-    <header className="site-header" style={{ top: demoMode ? "37px" : "5px" }}>
-      <div className="container d-flex justify-content-between align-items-center">
-        <Link to="/" className="logo-group text-decoration-none">
-          <span className="logo-main">ИТ-КЛАСТЕР</span>
-          <span className="logo-sub">СИБИРИ</span>
-        </Link>
-        <nav className="main-nav">
-          <Link to="/about">О КЛАСТЕРЕ</Link>
-          <Link to="/members">УЧАСТНИКИ</Link>
-          <Link to="/events">МЕРОПРИЯТИЯ</Link>
-          <Link to="/news">НОВОСТИ</Link>
-          <Link to="/contacts">КОНТАКТЫ</Link>
-          {user ? (
-            <>
-              <Link to="/dashboard" className="nav-highlight">МОЯ ПАНЕЛЬ</Link>
-              <button className="btn-lk-gold" onClick={onLogout}
-                style={{ cursor: "pointer", border: "2px solid var(--gold)", background: "transparent" }}>
-                {user.full_name.split(" ")[0].toUpperCase()} · ВЫЙТИ
-              </button>
-            </>
-          ) : (
-            <Link to="/login" className="btn-lk-gold text-decoration-none">ЛИЧНЫЙ КАБИНЕТ</Link>
-          )}
-        </nav>
-      </div>
-    </header>
-  </>
-);
+.dashboard-main-content {
+  flex: 1; padding: 32px 36px; overflow-y: auto; min-height: 100vh;
+}
 
-const SiteFooter = () => (
-  <footer className="site-footer">
-    <div className="container text-center">
-      <p>© 2026 Ассоциация «ИТ-Кластер Сибири»</p>
-      <div className="footer-links">
-        <Link to="/contacts">Контакты</Link> | <a href="#">Политика конфиденциальности</a>
-      </div>
-    </div>
-  </footer>
-);
+.sidebar-nav-list { display: flex; flex-direction: column; gap: 4px; }
 
-// -----------------------------------------------------------
-// УТИЛИТЫ
-// -----------------------------------------------------------
-const LoadingScreen = () => (
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
-    <div style={{ textAlign: "center" }}>
-      <div style={{ width: 40, height: 40, border: "4px solid #e2e8f0", borderTop: "4px solid #007bff", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
-      <p style={{ color: "#777", fontWeight: 600 }}>Загрузка...</p>
-    </div>
-  </div>
-);
+.nav-link {
+  display: flex; align-items: center; padding: 10px 14px; border-radius: 10px;
+  font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: 'Nunito', sans-serif; border: none; text-align: left; width: 100%;
+}
+.nav-link:hover { background: #eef6ff !important; }
 
-const PlaceholderPage = ({ title, icon }: { title: string; icon: string }) => (
-  <div style={{ padding: "60px 40px", textAlign: "center" }}>
-    <div style={{ fontSize: 64, marginBottom: 24 }}>{icon}</div>
-    <h1 style={{ fontWeight: 800, fontSize: "2rem", marginBottom: 12 }}>{title}</h1>
-    <p style={{ color: "#777" }}>Раздел в разработке — контент появится скоро.</p>
-    <Link to="/" style={{ display: "inline-block", marginTop: 24, padding: "12px 28px", background: "var(--primary)", color: "white", borderRadius: 8, fontWeight: 700, textDecoration: "none" }}>
-      ← На главную
-    </Link>
-  </div>
-);
+.auth-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #0d1b3e 0%, #1e3a8a 50%, #2563eb 100%);
+  padding: 20px;
+}
+.auth-card {
+  background: white; border-radius: 24px; padding: 40px 36px;
+  width: 100%; max-width: 420px; box-shadow: 0 25px 80px rgba(0,0,0,0.25);
+}
+.auth-input {
+  width: 100%; padding: 12px 16px; border-radius: 10px;
+  border: 1.5px solid var(--border); font-size: 14px;
+  font-family: 'Nunito', sans-serif; outline: none;
+  transition: border-color 0.2s; box-sizing: border-box;
+}
+.auth-input:focus { border-color: var(--primary); }
+.auth-btn {
+  width: 100%; padding: 13px; background: var(--primary); color: white;
+  border: none; border-radius: 100px; font-weight: 800; font-size: 15px;
+  cursor: pointer; font-family: 'Nunito', sans-serif; transition: opacity 0.15s;
+}
+.auth-btn:hover { opacity: 0.9; }
+.auth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-// -----------------------------------------------------------
-// КОМПОНЕНТ КАЛЕНДАРЯ (для участника и организатора)
-// -----------------------------------------------------------
-const CalendarView = ({
-  entries, isAdmin, onOpenModal, viewDate, setViewDate,
-}: {
-  entries: CalendarEntry[];
-  isAdmin: boolean;
-  onOpenModal?: () => void;
-  viewDate: Date;
-  setViewDate: (d: Date) => void;
-}) => {
-  const monthNames = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
-  const currentMonth = viewDate.getMonth();
-  const currentYear = viewDate.getFullYear();
-  const today = new Date();
+.kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.kanban-col { background: var(--bg-light); border-radius: 14px; padding: 16px; min-height: 220px; }
+.kanban-card {
+  background: white; border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 2px 8px rgba(74,89,138,0.06); border: 1.5px solid var(--border);
+  margin-bottom: 10px; transition: box-shadow 0.15s, transform 0.1s;
+}
+.kanban-card:hover { box-shadow: 0 4px 16px rgba(74,89,138,0.12); transform: translateY(-1px); }
 
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
-  const offset = firstDay === 0 ? 6 : firstDay - 1;
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-cell {
+  min-height: 90px; background: white; border-radius: 8px; padding: 6px 8px;
+  border: 1.5px solid var(--border); transition: border-color 0.15s; position: relative;
+}
+.cal-cell:hover { border-color: var(--primary-light); }
+.cal-cell.today { border-color: var(--primary); background: #eef6ff; }
+.cal-cell.other-month { background: #f8fafc; opacity: 0.5; }
+.cal-day-num { font-size: 12px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px; }
+.cal-cell.today .cal-day-num { color: var(--primary); }
+.cal-dot {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+  margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
-  const changeMonth = (dir: number) => setViewDate(new Date(currentYear, currentMonth + dir, 1));
+.chat-wrapper { display: flex; height: calc(100vh - 100px); border-radius: 16px; overflow: hidden; border: 1.5px solid var(--border); background: white; }
+.chat-rooms-list { width: 280px; border-right: 1.5px solid var(--border); display: flex; flex-direction: column; background: #fafbfc; }
+.chat-rooms-header { padding: 16px 18px; border-bottom: 1.5px solid var(--border); font-weight: 800; font-size: 15px; color: var(--primary-dark); display: flex; justify-content: space-between; align-items: center; }
+.chat-room-item { padding: 12px 18px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.12s; display: flex; align-items: center; gap: 10px; }
+.chat-room-item:hover { background: #eef6ff; }
+.chat-room-item.active { background: #e8f0fe; border-left: 3px solid var(--primary); }
+.chat-messages-area { flex: 1; display: flex; flex-direction: column; }
+.chat-messages-header { padding: 14px 20px; border-bottom: 1.5px solid var(--border); font-weight: 800; font-size: 14px; color: var(--primary-dark); background: white; }
+.chat-messages-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+.chat-msg { max-width: 70%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.5; word-wrap: break-word; }
+.chat-msg.mine { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 4px; }
+.chat-msg.theirs { align-self: flex-start; background: #f1f5f9; color: var(--text-main); border-bottom-left-radius: 4px; }
+.chat-input-bar { padding: 12px 16px; border-top: 1.5px solid var(--border); display: flex; gap: 10px; background: white; }
+.chat-input-bar input { flex: 1; padding: 10px 14px; border-radius: 10px; border: 1.5px solid var(--border); font-size: 13px; font-family: 'Nunito', sans-serif; outline: none; }
+.chat-input-bar input:focus { border-color: var(--primary); }
+.chat-input-bar button { padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 10px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: 'Nunito', sans-serif; white-space: nowrap; }
+.chat-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-weight: 600; font-size: 14px; }
+@media (max-width: 900px) { .chat-rooms-list { width: 200px; } .chat-msg { max-width: 85%; } }
 
+.landing-hero {
+  min-height: 100vh; display: flex; flex-direction: column;
+  background: linear-gradient(160deg, #0d1b3e 0%, #162557 40%, #1e3a8a 70%, #2563eb 100%);
+  color: white; position: relative; overflow: hidden;
+}
+.landing-hero::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at 80% 20%, rgba(59,130,246,0.3) 0%, transparent 60%),
+              radial-gradient(circle at 20% 80%, rgba(245,158,11,0.15) 0%, transparent 50%);
+  pointer-events: none;
+}
+.landing-nav {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 48px; position: relative; z-index: 2;
+}
+.landing-content {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 0 48px; position: relative; z-index: 2;
+}
+.landing-features { padding: 80px 48px; background: white; }
+.feature-card {
+  background: var(--bg-light); border-radius: 20px; padding: 32px 28px;
+  border: 1.5px solid var(--border); transition: transform 0.2s, box-shadow 0.2s;
+}
+.feature-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(74,89,138,0.1); }
+
+@media (max-width: 900px) {
+  .dashboard-wrapper { flex-direction: column; }
+  .dashboard-sidebar {
+    width: 100%; height: auto; position: relative;
+    flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 16px;
+  }
+  .sidebar-nav-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .dashboard-main-content { padding: 20px 16px; }
+  .kanban-board { grid-template-columns: 1fr; }
+  .landing-nav { padding: 16px 20px; }
+  .landing-content { padding: 0 20px; }
+  .landing-features { padding: 40px 20px; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+`;
+
+function injectGlobalCSS() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("eh-css")) return;
+  const s = document.createElement("style");
+  s.id = "eh-css";
+  s.textContent = GLOBAL_CSS;
+  document.head.appendChild(s);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════════
+export function Spinner({ label = "Загрузка..." }: { label?: string }) {
   return (
-    <div className="calendar-wrapper glass-card p-4 bg-white shadow-sm border-0">
-      <div className="calendar-header d-flex justify-content-between align-items-center mb-4">
-        <div className="d-flex align-items-center gap-3">
-          <h2 className="calendar-title m-0">
-            {monthNames[currentMonth]} <span>{currentYear}</span>
-          </h2>
-          <div className="btn-group">
-            <button className="btn btn-outline-secondary btn-sm" onClick={() => changeMonth(-1)}>←</button>
-            <button className="btn btn-outline-secondary btn-sm" onClick={() => setViewDate(new Date())}>Сегодня</button>
-            <button className="btn btn-outline-secondary btn-sm" onClick={() => changeMonth(1)}>→</button>
-          </div>
-        </div>
-        {isAdmin && onOpenModal && (
-          <button className="btn btn-primary px-4 fw-bold" onClick={onOpenModal}>+ СОЗДАТЬ</button>
-        )}
+    <div style={{ textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
+      <div style={{ fontSize: 32, marginBottom: 12, animation: "spin 1s linear infinite" }}>
+        ⏳
       </div>
-
-      <div className="calendar-grid">
-        {["ПН","ВТ","СР","ЧТ","ПТ","СБ","ВС"].map(d => (
-          <div key={d} className="weekday-label">{d}</div>
-        ))}
-        {Array(offset).fill(null).map((_, i) => <div key={`e${i}`} className="cell empty" />)}
-        {days.map(day => {
-          const isToday = day === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear();
-          const dayEntries = entries.filter(e => e.day === day && e.month === currentMonth && e.year === currentYear);
-          return (
-            <div key={day} className={`cell ${isToday ? "today-cell" : ""}`}>
-              <div className="cell-header">
-                <span className="day-num">{day}</span>
-              </div>
-              <div className="cell-content">
-                {dayEntries.map(entry => (
-                  <div key={entry.id} className={`mini-badge ${entry.type.toLowerCase()}`}>
-                    {entry.time && <b>{entry.time} </b>}{entry.title}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
     </div>
   );
-};
+}
 
-// -----------------------------------------------------------
-// КОМПОНЕНТ КАНБАНА
-// -----------------------------------------------------------
-const KanbanView = ({
-  tasks, onUpdateStatus, showProgress = false,
+export function ErrorBlock({
+  message,
+  onRetry,
 }: {
-  tasks: Task[];
-  onUpdateStatus: (id: string, status: TaskStatus) => void;
-  showProgress?: boolean; // только для организатора
-}) => {
-  const columns: { id: TaskStatus; label: string; color: string }[] = [
-    { id: "TODO", label: "Нужно сделать", color: "#e2e8f0" },
-    { id: "IN_PROGRESS", label: "В работе", color: "#f59e0b" },
-    { id: "DONE", label: "Готово", color: "#16a34a" },
-  ];
-
-  const donePercent = tasks.length > 0
-    ? Math.round((tasks.filter(t => t.status === "DONE").length / tasks.length) * 100)
-    : 0;
-
+  message: string;
+  onRetry?: () => void;
+}) {
   return (
-    <div>
-      {/* Прогресс — только для организатора */}
-      {showProgress && tasks.length > 0 && (
-        <div style={{ background: "white", borderRadius: 12, padding: "16px 20px", marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Общий прогресс задач</span>
-            <span style={{ fontWeight: 800, color: "var(--primary)" }}>{donePercent}%</span>
-          </div>
-          <div style={{ background: "#e2e8f0", borderRadius: 4, height: 8 }}>
-            <div style={{ width: `${donePercent}%`, background: "var(--primary)", height: "100%", borderRadius: 4, transition: "width 0.3s" }} />
-          </div>
-        </div>
-      )}
-
-      <div className="kanban-container">
-        {columns.map(col => (
-          <div key={col.id} className="kanban-col">
-            <h5 style={{ fontWeight: 800, borderBottom: "2px solid #e2e8f0", paddingBottom: 10, marginBottom: 16 }}>
-              {col.label}
-              <span style={{ marginLeft: 8, background: "#e2e8f0", borderRadius: 12, padding: "2px 8px", fontSize: 12 }}>
-                {tasks.filter(t => t.status === col.id).length}
-              </span>
-            </h5>
-            {tasks.filter(t => t.status === col.id).map(task => (
-              <div key={task.id} style={{
-                background: "white", borderRadius: 8, padding: 14, marginBottom: 10,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.06)", borderLeft: `4px solid ${col.color}`,
-              }}>
-                <h6 style={{ margin: "0 0 8px", fontWeight: 700 }}>{task.title}</h6>
-                <div style={{ fontSize: 12, color: "#777", marginBottom: 10 }}>📅 {task.due_date || "—"}</div>
-                <select value={task.status}
-                  onChange={(e) => onUpdateStatus(task.id, e.target.value as TaskStatus)}
-                  style={{ width: "100%", padding: 6, borderRadius: 6, border: "1px solid #e0e6ed", fontSize: 13 }}>
-                  {columns.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                </select>
-              </div>
-            ))}
-            {tasks.filter(t => t.status === col.id).length === 0 && (
-              <div style={{ color: "#bbb", fontSize: 13, textAlign: "center", padding: "30px 0" }}>Пусто</div>
-            )}
-          </div>
-        ))}
+    <div
+      style={{
+        background: "#fef2f2",
+        border: "1.5px solid #fecaca",
+        borderRadius: 14,
+        padding: "20px 24px",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div>
+      <div
+        style={{
+          color: "#dc2626",
+          fontWeight: 700,
+          fontSize: 14,
+          marginBottom: 12,
+        }}
+      >
+        {message}
       </div>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// НАСТРОЙКИ ПРОФИЛЯ (редактируемые)
-// -----------------------------------------------------------
-const SettingsTab = ({
-  user, setUser, demoMode,
-}: {
-  user: User;
-  setUser: (u: User) => void;
-  demoMode: boolean;
-}) => {
-  const [fullName, setFullName] = useState(user.full_name);
-  const [bio, setBio] = useState(user.bio || "");
-  const [organization, setOrganization] = useState(user.organization || "");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSave = async () => {
-    if (!fullName.trim()) { setError("Имя не может быть пустым"); return; }
-    setSaving(true); setError(""); setSaved(false);
-
-    if (demoMode) {
-      setUser({ ...user, full_name: fullName.trim(), bio: bio || undefined, organization: organization || undefined });
-      setSaving(false); setSaved(true);
-      return;
-    }
-
-    try {
-      const res = await authAPI.updateProfile({
-        full_name: fullName.trim(),
-        bio: bio || undefined,
-        organization: organization || undefined,
-      });
-      setUser(res.data);
-      setSaved(true);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || "Не удалось сохранить");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "10px 14px", borderRadius: 8,
-    border: "1.5px solid var(--border, #e2e8f0)", fontSize: 14,
-    fontFamily: "Nunito, sans-serif", outline: "none", boxSizing: "border-box",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 12, fontWeight: 800, color: "#777",
-    textTransform: "uppercase", display: "block", marginBottom: 6,
-  };
-
-  return (
-    <div>
-      <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Настройки профиля</h2>
-      <div style={{ background: "white", borderRadius: 16, padding: 32, maxWidth: 480, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
-        {demoMode && (
-          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 13, fontWeight: 600, color: "#92400e" }}>
-            Demo — изменения не сохраняются в БД
-          </div>
-        )}
-        {error && (
-          <div style={{ background: "#fef2f2", color: "#dc2626", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 14, fontWeight: 600 }}>
-            {error}
-          </div>
-        )}
-        {saved && (
-          <div style={{ background: "#f0fdf4", color: "#16a34a", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 14, fontWeight: 600 }}>
-            Сохранено успешно
-          </div>
-        )}
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Email</label>
-          <div style={{ ...inputStyle, background: "#f8fafc", color: "#64748b" }}>{user.email}</div>
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Роль</label>
-          <div style={{ ...inputStyle, background: "#f8fafc", color: "#64748b" }}>{user.global_role}</div>
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Имя *</label>
-          <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Организация</label>
-          <input type="text" value={organization} onChange={e => setOrganization(e.target.value)} placeholder="Название организации" style={inputStyle} />
-        </div>
-        <div style={{ marginBottom: 24 }}>
-          <label style={labelStyle}>О себе (bio)</label>
-          <textarea
-            value={bio}
-            onChange={e => setBio(e.target.value)}
-            placeholder="Краткое описание"
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical" }}
-          />
-        </div>
+      {onRetry && (
         <button
-          onClick={handleSave}
-          disabled={saving}
+          onClick={onRetry}
           style={{
-            width: "100%", padding: "12px", background: "var(--primary)", color: "white",
-            border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14,
-            cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
+            padding: "8px 20px",
+            background: "#dc2626",
+            color: "white",
+            border: "none",
+            borderRadius: 100,
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: "pointer",
             fontFamily: "Nunito, sans-serif",
           }}
         >
-          {saving ? "Сохранение..." : "СОХРАНИТЬ"}
+          Повторить
         </button>
-      </div>
+      )}
     </div>
   );
+}
+
+export function EmptyState({
+  icon,
+  title,
+  description,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      style={{
+        textAlign: "center",
+        padding: "48px 20px",
+        color: "var(--text-muted)",
+      }}
+    >
+      <div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div>
+      <div
+        style={{
+          fontWeight: 800,
+          fontSize: 16,
+          color: "var(--primary-dark)",
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ fontSize: 14 }}>{description}</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEMO DATA — «ХАКАТОН ВНУТРИ ХАКАТОНА»
+// ═══════════════════════════════════════════════════════════════
+interface DemoUser extends User {
+  password: string;
+}
+
+const DEMO_USERS: Record<string, DemoUser> = {
+  "org@it.ru": {
+    id: "u1",
+    email: "org@it.ru",
+    password: "org",
+    full_name: "Организатор Иванов",
+    global_role: "ORGANIZER",
+    organization: "ИТ-Кластер Сибири",
+  },
+  "user@it.ru": {
+    id: "u2",
+    email: "user@it.ru",
+    password: "user",
+    full_name: "Иван Участников",
+    global_role: "PARTICIPANT",
+    organization: "ОмГТУ",
+  },
+  "curator@it.ru": {
+    id: "u3",
+    email: "curator@it.ru",
+    password: "curator",
+    full_name: "Куратор Секционов",
+    global_role: "PARTICIPANT" as GlobalRole,
+    organization: "CURATOR_DEMO",
+  },
 };
 
-// -----------------------------------------------------------
-// ЛЕНДИНГ
-// -----------------------------------------------------------
-const LandingPage = ({ demoMode }: { demoMode: boolean }) => {
-  const navigate = useNavigate();
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [loading, setLoading] = useState(true);
+const DEMO_EVENTS: EventData[] = [
+  {
+    id: "e1",
+    title: "XI Международный ИТ-Форум 2026",
+    description:
+      "«Основы цифрового будущего» — крупнейший IT-форум Сибири. Секции: ИнфоБез, ML, DevOps, Frontend, UX/UI.",
+    start_date: "2026-03-16",
+    end_date: "2026-03-20",
+    owner_id: "u1",
+    status: "PUBLISHED",
+  },
+  {
+    id: "e2",
+    title: "Цифровой хакатон 2026",
+    description:
+      "Хакатон ИТ-Кластера Сибири × ОмГТУ. 6 кейсов, 3 дня, 30 команд.",
+    start_date: "2026-03-16",
+    end_date: "2026-03-20",
+    owner_id: "u1",
+    status: "PUBLISHED",
+  },
+  {
+    id: "e3",
+    title: "Робофест Омск 2026",
+    description: "Фестиваль робототехники. Черновик — запуск осенью.",
+    start_date: "2026-10-01",
+    end_date: "2026-10-03",
+    owner_id: "u1",
+    status: "DRAFT",
+  },
+];
 
-  useEffect(() => {
-    if (demoMode) { setEvents(DEMO_EVENTS); setLoading(false); return; }
-    eventsAPI.getPublic()
-      .then(res => setEvents(res.data as EventItem[]))
-      .catch(() => setEvents([]))
-      .finally(() => setLoading(false));
-  }, [demoMode]);
+const DEMO_TASKS: Task[] = [
+  {
+    id: "t1",
+    event_id: "e1",
+    title: "Подтвердить спикеров секции ИнфоБез",
+    assigned_to: "u3",
+    assigned_to_name: "Куратор Секционов",
+    created_by: "u1",
+    status: "IN_PROGRESS",
+    due_date: "2026-03-18",
+  },
+  {
+    id: "t2",
+    event_id: "e1",
+    title: "Забронировать Зал А (корпус 1)",
+    assigned_to: "u1",
+    assigned_to_name: "Организатор Иванов",
+    created_by: "u1",
+    status: "DONE",
+    due_date: "2026-03-16",
+  },
+  {
+    id: "t3",
+    event_id: "e1",
+    title: "Подготовить раздаточные материалы",
+    assigned_to: "u2",
+    assigned_to_name: "Иван Участников",
+    created_by: "u1",
+    status: "TODO",
+    due_date: "2026-03-19",
+  },
+  {
+    id: "t4",
+    event_id: "e1",
+    title: "Настроить трансляцию секции ML",
+    assigned_to: "u1",
+    assigned_to_name: "Организатор Иванов",
+    created_by: "u1",
+    status: "TODO",
+    due_date: "2026-03-19",
+  },
+  {
+    id: "t5",
+    event_id: "e2",
+    title: "Настроить WiFi в аудиториях",
+    assigned_to: "u1",
+    assigned_to_name: "Организатор Иванов",
+    created_by: "u1",
+    status: "IN_PROGRESS",
+    due_date: "2026-03-18",
+  },
+  {
+    id: "t6",
+    event_id: "e2",
+    title: "Подготовить кейсы для команд",
+    assigned_to: "u1",
+    assigned_to_name: "Организатор Иванов",
+    created_by: "u1",
+    status: "DONE",
+    due_date: "2026-03-17",
+  },
+  {
+    id: "t7",
+    event_id: "e2",
+    title: "Пригласить менторов на хакатон",
+    assigned_to: "u3",
+    assigned_to_name: "Куратор Секционов",
+    created_by: "u1",
+    status: "TODO",
+    due_date: "2026-03-18",
+  },
+  {
+    id: "t8",
+    event_id: "e2",
+    title: "Заказать питание для участников",
+    assigned_to: "u2",
+    assigned_to_name: "Иван Участников",
+    created_by: "u1",
+    status: "IN_PROGRESS",
+    due_date: "2026-03-19",
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════
+// 1. LANDING PAGE  (FIX #5 — возвращён лендинг)
+// ═══════════════════════════════════════════════════════════════
+function LandingPage() {
+  const navigate = useNavigate();
+
+  const features = [
+    { icon: "🏗️", title: "Структура мероприятия", desc: "Секции, доклады, кейсы — всё в одном месте с ролевой моделью" },
+    { icon: "📌", title: "Канбан задач", desc: "Ставьте задачи организаторам, кураторам, спикерам. Контролируйте % готовности" },
+    { icon: "📅", title: "Календарь и расписание", desc: "Мероприятия, дедлайны задач и личное расписание участника" },
+    { icon: "👥", title: "4 роли", desc: "Организатор → Куратор → Спикер → Участник. Каждый видит своё" },
+    { icon: "💬", title: "Встроенный мессенджер", desc: "Групповые чаты мероприятий и ЛС. WebSocket в реальном времени" },
+    { icon: "⭐", title: "Обратная связь", desc: "Комментарии и оценки докладов. Итоговый отчёт куратора секции" },
+  ];
 
   return (
-    <div className="landing-content">
-      <section className="hero-section">
-        <div className="hero-bg-overlay" />
-        <div className="container h-100 d-flex align-items-center justify-content-center">
-          <div className="hero-content-wrapper text-center">
-            <h1 className="hero-title">ИТ-ФОРУМ 2026</h1>
-            <div className="hero-divider mx-auto" />
-            <p className="hero-description">
-              Главное событие цифровой индустрии Сибири.<br />
-              Крупнейшая площадка для нетворкинга.
-            </p>
-            <button onClick={() => navigate("/login")} className="btn-main-action">
-              СТАТЬ УЧАСТНИКОМ
+    <div>
+      {/* HERO */}
+      <div className="landing-hero">
+        <nav className="landing-nav">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 28 }}>🚀</span>
+            <span style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.5px" }}>
+              EventHub
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={() => navigate("/login")}
+              style={{
+                padding: "10px 24px",
+                background: "rgba(255,255,255,0.1)",
+                color: "white",
+                border: "1.5px solid rgba(255,255,255,0.25)",
+                borderRadius: 100,
+                fontWeight: 800,
+                fontSize: 14,
+                cursor: "pointer",
+                fontFamily: "Nunito, sans-serif",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              Войти
+            </button>
+            <button
+              onClick={() => navigate("/login")}
+              style={{
+                padding: "10px 24px",
+                background: "white",
+                color: "var(--primary)",
+                border: "none",
+                borderRadius: 100,
+                fontWeight: 800,
+                fontSize: 14,
+                cursor: "pointer",
+                fontFamily: "Nunito, sans-serif",
+              }}
+            >
+              Начать бесплатно
             </button>
           </div>
-        </div>
-      </section>
-      <section className="program-section py-5">
-        <div className="container">
-          <div className="content-inner">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
-              <h2 className="section-title" style={{ margin: 0 }}>Ближайшие мероприятия</h2>
-              <Link to="/events" style={{ color: "var(--primary)", fontWeight: 700, fontSize: 14 }}>Все мероприятия →</Link>
+        </nav>
+
+        <div className="landing-content">
+          <div style={{ maxWidth: 680, animation: "fadeInUp 0.8s ease-out" }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 800,
+                color: "rgba(255,255,255,0.6)",
+                textTransform: "uppercase",
+                letterSpacing: 2,
+                marginBottom: 16,
+              }}
+            >
+              Платформа управления мероприятиями
             </div>
-            {loading ? <LoadingScreen /> : (
-              <div className="row g-3">
-                {events.slice(0, 3).map(e => (
-                  <div key={e.id} className="col-lg-4 col-md-6">
-                    <div className="event-card-compact" style={{ cursor: "pointer" }} onClick={() => navigate(`/events/${e.id}`)}>
-                      <div className="date-badge">{e.start_date}</div>
-                      <h5 className="event-title">{e.title}</h5>
-                      <div className="event-info">{e.description}</div>
-                      <div style={{ marginTop: 12, color: "var(--primary)", fontSize: 13, fontWeight: 700 }}>Подробнее →</div>
-                    </div>
+            <h1
+              style={{
+                fontSize: "clamp(36px, 5vw, 56px)",
+                fontWeight: 900,
+                lineHeight: 1.15,
+                marginBottom: 20,
+                letterSpacing: "-1px",
+              }}
+            >
+              Организуйте форумы,{" "}
+              <span style={{ color: "#f59e0b" }}>конференции</span> и хакатоны в
+              одном месте
+            </h1>
+            <p
+              style={{
+                fontSize: 18,
+                color: "rgba(255,255,255,0.75)",
+                lineHeight: 1.7,
+                marginBottom: 36,
+                maxWidth: 520,
+              }}
+            >
+              Замените связку «сайт&nbsp;+ мессенджеры&nbsp;+ таблицы&nbsp;+
+              файл&nbsp;программы» одним инструментом.
+            </p>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <button
+                onClick={() => navigate("/login")}
+                style={{
+                  padding: "14px 36px",
+                  background: "white",
+                  color: "var(--primary-dark)",
+                  border: "none",
+                  borderRadius: 100,
+                  fontWeight: 900,
+                  fontSize: 16,
+                  cursor: "pointer",
+                  fontFamily: "Nunito, sans-serif",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+                }}
+              >
+                Попробовать Demo →
+              </button>
+              <button
+                onClick={() =>
+                  document
+                    .getElementById("features")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+                style={{
+                  padding: "14px 36px",
+                  background: "transparent",
+                  color: "white",
+                  border: "1.5px solid rgba(255,255,255,0.3)",
+                  borderRadius: 100,
+                  fontWeight: 800,
+                  fontSize: 16,
+                  cursor: "pointer",
+                  fontFamily: "Nunito, sans-serif",
+                }}
+              >
+                Узнать больше
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 40, marginTop: 48 }}>
+              {[
+                { n: "4", l: "Роли" },
+                { n: "10+", l: "Функций куратора" },
+                { n: "1", l: "Вместо 5 сервисов" },
+              ].map((s) => (
+                <div key={s.l}>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: "#f59e0b" }}>
+                    {s.n}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// СПИСОК МЕРОПРИЯТИЙ
-// -----------------------------------------------------------
-const EVENTS_PAGE_SIZE = 6;
-
-const EventsPage = ({ demoMode }: { demoMode: boolean }) => {
-  const navigate = useNavigate();
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [skip, setSkip] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-
-  useEffect(() => {
-    if (demoMode) { setEvents(DEMO_EVENTS); setLoading(false); setHasMore(false); return; }
-    setLoading(true);
-    eventsAPI.getPublic(0, EVENTS_PAGE_SIZE)
-      .then(res => {
-        const data = res.data as EventItem[];
-        setEvents(data);
-        setSkip(data.length);
-        setHasMore(data.length === EVENTS_PAGE_SIZE);
-      })
-      .catch(() => setEvents([]))
-      .finally(() => setLoading(false));
-  }, [demoMode]);
-
-  const loadMore = () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    eventsAPI.getPublic(skip, EVENTS_PAGE_SIZE)
-      .then(res => {
-        const data = res.data as EventItem[];
-        setEvents(prev => [...prev, ...data]);
-        setSkip(prev => prev + data.length);
-        setHasMore(data.length === EVENTS_PAGE_SIZE);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingMore(false));
-  };
-
-  return (
-    <div style={{ padding: "40px 0" }}>
-      <div className="container">
-        <h1 style={{ fontWeight: 800, marginBottom: 32 }}>Мероприятия</h1>
-        {loading ? <LoadingScreen /> : (
-          <>
-            <div className="row g-3">
-              {events.map(e => (
-                <div key={e.id} className="col-lg-4 col-md-6">
-                  <div className="event-card-compact" style={{ cursor: "pointer" }} onClick={() => navigate(`/events/${e.id}`)}>
-                    <div className="date-badge">{e.start_date} — {e.end_date}</div>
-                    <h5 className="event-title">{e.title}</h5>
-                    <div className="event-info">{e.description}</div>
-                    <div style={{ marginTop: 12, color: "var(--primary)", fontSize: 13, fontWeight: 700 }}>Подробнее →</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.5)",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {s.l}
                   </div>
                 </div>
               ))}
             </div>
-            {hasMore && (
-              <div style={{ textAlign: "center", marginTop: 32 }}>
-                <button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  style={{
-                    padding: "12px 36px", background: "var(--primary)", color: "white",
-                    border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14,
-                    cursor: loadingMore ? "not-allowed" : "pointer", opacity: loadingMore ? 0.7 : 1,
-                  }}
-                >
-                  {loadingMore ? "Загрузка..." : "Показать ещё"}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// СТРАНИЦА МЕРОПРИЯТИЯ
-// -----------------------------------------------------------
-const EventPage = ({ user, demoMode }: { user: User | null; demoMode: boolean }) => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const [event, setEvent] = useState<EventItem | null>(null);
-  const [program, setProgram] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [registered, setRegistered] = useState(false);
-  const [addLoadingId, setAddLoadingId] = useState<string | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!id) return;
-    if (demoMode) {
-      setEvent(DEMO_EVENTS.find(e => e.id === id) || null);
-      setProgram(DEMO_PROGRAM[id] || []);
-      setLoading(false);
-      return;
-    }
-    Promise.all([eventsAPI.getOne(id), participantsAPI.getProgram(id)])
-      .then(([eRes, pRes]) => {
-        setEvent(eRes.data as EventItem);
-        setProgram(pRes.data || null);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [id, demoMode]);
-
-  if (loading) return <LoadingScreen />;
-  if (!event) return <PlaceholderPage title="Мероприятие не найдено" icon="🔍" />;
-
-  const handleAddToSchedule = async (reportId: string) => {
-    if (!user) {
-      navigate("/login");
-      return;
-    }
-    if (demoMode) {
-      // В demo режиме не ходим на бэкенд.
-      return;
-    }
-    setAddLoadingId(reportId);
-    setError("");
-    try {
-      await participantsAPI.addToSchedule(reportId);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || "Не удалось добавить в расписание");
-    } finally {
-      setAddLoadingId(null);
-    }
-  };
-
-  return (
-    <div style={{ padding: "40px 0" }}>
-      <div className="container">
-        <Link to="/events" style={{ color: "var(--primary)", fontWeight: 700, fontSize: 14 }}>← Все мероприятия</Link>
-        <div style={{ marginTop: 24, background: "white", borderRadius: 16, padding: 40, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
-          <div className="date-badge" style={{ marginBottom: 12 }}>{event.start_date} — {event.end_date}</div>
-          <h1 style={{ fontWeight: 800, marginBottom: 16 }}>{event.title}</h1>
-          <p style={{ color: "#555", fontSize: 16, lineHeight: 1.7, marginBottom: 32 }}>{event.description}</p>
-          {registered ? (
-            <div style={{ background: "#f0fdf4", color: "#16a34a", padding: "16px 24px", borderRadius: 10, fontWeight: 700, fontSize: 15, border: "1px solid #bbf7d0", display: "inline-block" }}>
-              ✅ Вы зарегистрированы!
-            </div>
-          ) : (
-            <button onClick={async () => {
-              if (!user) { navigate("/login"); return; }
-              if (demoMode) { setRegistered(true); return; }
-              try { await participantsAPI.registerToEvent(id!); setRegistered(true); }
-              catch { alert("Ошибка при регистрации"); }
-            }} style={{ padding: "14px 36px", background: "var(--gold)", color: "white", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
-              СТАТЬ УЧАСТНИКОМ
-            </button>
-          )}
-        </div>
-
-        {error && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 6, fontSize: 14 }}>
-              {error}
-            </div>
           </div>
-        )}
-
-        {Array.isArray(program) ? program.length > 0 : (program?.sections?.length || 0) > 0 ? (
-          <div style={{ marginTop: 40 }}>
-            <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Программа</h2>
-            <div style={{ display: "grid", gap: 14 }}>
-              {Array.isArray(program)
-                ? program.map((item: any) => (
-                    <div
-                      key={item.id}
-                      style={{
-                        background: "white",
-                        borderRadius: 12,
-                        padding: 20,
-                        boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-                        borderLeft: "4px solid var(--primary)",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, marginBottom: 6 }}>{item.start_time}</div>
-                      <h5 style={{ margin: "0 0 6px", fontWeight: 700 }}>{item.title}</h5>
-                      <p style={{ color: "#777", fontSize: 13, margin: 0 }}>{item.description}</p>
-                      <button
-                        type="button"
-                        onClick={() => handleAddToSchedule(item.id)}
-                        style={{
-                          marginTop: 10,
-                          padding: "8px 14px",
-                          borderRadius: 999,
-                          border: "none",
-                          background: "var(--primary)",
-                          color: "white",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Добавить в расписание
-                      </button>
-                    </div>
-                  ))
-                : (program?.sections || []).map((section: any) => (
-                    <div key={section.id} style={{ background: "white", borderRadius: 16, padding: 18, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
-                      <div style={{ fontWeight: 900, marginBottom: 6 }}>{section.title}</div>
-                      <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>
-                        {section.location ? `📍 ${section.location}` : "📍 —"}
-                        {section.format ? ` · ${section.format}` : ""}
-                      </div>
-                      <div className="row g-3">
-                        {(section.reports || []).map((r: any) => (
-                          <div key={r.id} className="col-md-6">
-                            <div style={{ background: "#f8fafc", borderRadius: 12, padding: 14, border: "1px solid var(--border)" }}>
-                              <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 6 }}>
-                                {r.start_time ? new Date(r.start_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—"}
-                                {r.end_time ? `–${new Date(r.end_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : ""}
-                              </div>
-                              <div style={{ fontWeight: 900, marginBottom: 6 }}>{r.title}</div>
-                              <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>
-                                {r.speaker_name ? `🎤 ${r.speaker_name}` : "🎤 —"}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleAddToSchedule(r.id)}
-                                style={{
-                                  marginTop: 10,
-                                  padding: "8px 14px",
-                                  borderRadius: 999,
-                                  border: "none",
-                                  background: "var(--primary)",
-                                  color: "white",
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  cursor: addLoadingId === r.id ? "wait" : "pointer",
-                                  opacity: addLoadingId === r.id ? 0.7 : 1,
-                                }}
-                              >
-                                {addLoadingId === r.id ? "Добавляем..." : "Добавить в расписание"}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// АВТОРИЗАЦИЯ
-// -----------------------------------------------------------
-const AuthPage = ({ onLogin }: { onLogin: (u: User, demo: boolean) => void }) => {
-  const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "10px 14px", borderRadius: 6,
-    border: "1px solid #e0e6ed", marginBottom: 12, fontSize: 14, boxSizing: "border-box",
-  };
-
-  const handleSubmit = async () => {
-    if (!email || !password || (!isLogin && !fullName)) { setError("Заполните все поля"); return; }
-    setLoading(true); setError("");
-    try {
-      let user: User; let isDemo = false;
-      try {
-        if (isLogin) {
-          const res = await authAPI.login({ email, password });
-          localStorage.setItem("access_token", res.data.access_token);
-        } else {
-          await authAPI.register({ email, password, full_name: fullName });
-          const res = await authAPI.login({ email, password });
-          localStorage.setItem("access_token", res.data.access_token);
-        }
-        user = (await authAPI.me()).data;
-      } catch {
-        const demoUser = DEMO_USERS[email];
-        if (!demoUser || demoUser.password !== password) throw new Error("Неверный email или пароль");
-        const { password: _p, ...u } = demoUser;
-        user = u; isDemo = true;
-      }
-      onLogin(user, isDemo);
-      navigate("/dashboard");
-    } catch (e: any) {
-      setError(e.message || "Ошибка входа");
-    } finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
-      <div style={{ maxWidth: 420, width: "100%", background: "white", borderRadius: 16, padding: 40, boxShadow: "0 10px 30px rgba(0,0,0,0.08)" }}>
-
-        {/* Demo кнопки */}
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "14px 16px", marginBottom: 24, fontSize: 13 }}>
-          <div style={{ fontWeight: 800, color: "#92400e", marginBottom: 8 }}>🔧 Быстрый вход (Demo)</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { setEmail("admin@it.ru"); setPassword("admin"); }}
-              style={{ flex: 1, padding: 7, background: "#007bff", color: "white", border: "none", borderRadius: 6, fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
-              Организатор
-            </button>
-            <button onClick={() => { setEmail("user@it.ru"); setPassword("user"); }}
-              style={{ flex: 1, padding: 7, background: "#6b7280", color: "white", border: "none", borderRadius: 6, fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
-              Участник
-            </button>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", marginBottom: 28, background: "#f1f5f9", borderRadius: 8, padding: 4 }}>
-          {["Вход", "Регистрация"].map((label, i) => (
-            <button key={label} onClick={() => { setIsLogin(i === 0); setError(""); }}
-              style={{ flex: 1, padding: 8, border: "none", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer", background: (isLogin ? i === 0 : i === 1) ? "white" : "transparent", color: (isLogin ? i === 0 : i === 1) ? "var(--primary)" : "#777", boxShadow: (isLogin ? i === 0 : i === 1) ? "0 2px 6px rgba(0,0,0,0.08)" : "none" }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {error && <div style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 6, marginBottom: 16, fontSize: 14 }}>{error}</div>}
-        {!isLogin && <input type="text" placeholder="Полное имя" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} />}
-        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
-        <input type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()} style={{ ...inputStyle, marginBottom: 20 }} />
-
-        <button onClick={handleSubmit} disabled={loading}
-          style={{ width: "100%", padding: 12, background: "linear-gradient(135deg, #007bff, #0056b3)", color: "white", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 14, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
-          {loading ? "Загрузка..." : isLogin ? "ВОЙТИ" : "ЗАРЕГИСТРИРОВАТЬСЯ"}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// ДАШБОРД УЧАСТНИКА
-// -----------------------------------------------------------
-const ParticipantDashboard = ({ user, setUser, onLogout, demoMode }: { user: User; setUser: (u: User) => void; onLogout: () => void; demoMode: boolean }) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<"calendar" | "schedule" | "myReport" | "messenger" | "kanban" | "settings">("calendar");
-  const [viewDate, setViewDate] = useState(new Date(2026, 2, 17));
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (demoMode) {
-      setCalendarEntries(DEMO_CALENDAR);
-      setTasks(DEMO_MY_TASKS);
-      setLoading(false);
-      return;
-    }
-    // Бек 4: GET /api/events/calendar
-    Promise.all([
-      tasksAPI.getCalendar(),
-    ])
-      .then(([calRes]) => {
-        const mapped: CalendarEntry[] = ((calRes.data || []) as CalendarItem[]).map(item => {
-          const d = new Date(item.start);
-          return {
-            id: item.id,
-            title: item.title,
-            type: item.type === "event" ? "EVENT" as const : "TASK" as const,
-            day: d.getDate(),
-            month: d.getMonth(),
-            year: d.getFullYear(),
-            status: item.type === "task" ? "TODO" as TaskStatus : undefined,
-          };
-        });
-        setCalendarEntries(mapped);
-        setTasks([]);
-      })
-      .catch(() => { setCalendarEntries([]); setTasks([]); })
-      .finally(() => setLoading(false));
-  }, [demoMode]);
-
-  const handleUpdateStatus = async (id: string, status: TaskStatus) => {
-    if (demoMode) { setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t)); return; }
-    try {
-      await tasksAPI.updateStatus(id, status);
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
-    } catch { alert("Не удалось обновить статус"); }
-  };
-
-  const navItems = [
-    { id: "calendar", icon: "📅", label: "Календарь" },
-    { id: "schedule", icon: "🗓️", label: "Расписание" },
-    { id: "myReport", icon: "🎤", label: "Мой доклад" },
-    { id: "messenger", icon: "💬", label: "Чаты" },
-    { id: "kanban", icon: "📋", label: "Мои задачи" },
-    { id: "settings", icon: "⚙️", label: "Настройки" },
-  ];
-
-  return (
-    <div className="dashboard-wrapper">
-      <aside className="dashboard-sidebar">
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--primary)", color: "white", fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
-            {user.full_name[0]}
-          </div>
-          <h5 style={{ marginTop: 12, marginBottom: 4, fontWeight: 800 }}>{user.full_name}</h5>
-          <span style={{ display: "inline-block", padding: "4px 12px", background: "#eef6ff", color: "var(--primary)", borderRadius: 20, fontSize: 11, fontWeight: 800 }}>
-            {user.global_role}
-          </span>
-          {user.organization && <p style={{ fontSize: 12, color: "#777", marginTop: 6 }}>{user.organization}</p>}
-          {demoMode && <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, marginTop: 4 }}>DEMO</div>}
-        </div>
-        <nav className="sidebar-nav-list">
-          {navItems.map(item => (
-            <button key={item.id} className="nav-link border-0 w-100 text-start"
-              style={{ background: activeTab === item.id ? "#eef6ff" : "#f1f5f9", color: activeTab === item.id ? "var(--primary)" : "#475569" }}
-              onClick={() => setActiveTab(item.id as any)}>
-              <span style={{ marginRight: 10 }}>{item.icon}</span>{item.label}
-            </button>
-          ))}
-          <button className="nav-link border-0 w-100 text-start"
-            style={{ marginTop: 20, background: "#fff1f1", color: "#ef4444" }} onClick={onLogout}>
-            <span style={{ marginRight: 10 }}>🚪</span>Выйти
-          </button>
-        </nav>
-      </aside>
-
-      <main className="dashboard-main-content">
-        {loading ? <LoadingScreen /> : (
-          <>
-            {activeTab === "calendar" && (
-              <CalendarView
-                entries={calendarEntries}
-                isAdmin={false}
-                viewDate={viewDate}
-                setViewDate={setViewDate}
-              />
-            )}
-            {activeTab === "kanban" && (
-              <div>
-                <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Мои задачи</h2>
-                {/* НЕТ процента готовности — это только для организатора */}
-                <KanbanView tasks={tasks} onUpdateStatus={handleUpdateStatus} showProgress={false} />
-              </div>
-            )}
-            {activeTab === "schedule" && <ScheduleTab demoMode={demoMode} />}
-            {activeTab === "myReport" && <MyReportTab user={user} demoMode={demoMode} />}
-            {activeTab === "messenger" && <Messenger demoMode={demoMode} myUserId={user.id} />}
-            {activeTab === "settings" && (
-              <SettingsTab user={user} setUser={setUser} demoMode={demoMode} />
-            )}
-          </>
-        )}
-      </main>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// ДАШБОРД ОРГАНИЗАТОРА
-// -----------------------------------------------------------
-const OrganizerDashboard = ({ user, setUser, onLogout, demoMode }: { user: User; setUser: (u: User) => void; onLogout: () => void; demoMode: boolean }) => {
-  const navigate = useNavigate();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<"calendar" | "messenger" | "events" | "kanban" | "settings">("calendar");
-  const [viewDate, setViewDate] = useState(new Date(2026, 2, 17));
-  const [loading, setLoading] = useState(true);
-  const [showCreateEvent, setShowCreateEvent] = useState(false);
-
-  const reloadEvents = () => {
-    Promise.all([
-      eventsAPI.getAll(),
-      tasksAPI.getCalendar(),
-    ])
-      .then(async ([evRes, calRes]) => {
-        const eventsData = evRes.data as EventItem[];
-        setEvents(eventsData);
-        const mapped: CalendarEntry[] = ((calRes.data || []) as CalendarItem[]).map(item => {
-          const d = new Date(item.start);
-          return {
-            id: item.id,
-            title: item.title,
-            type: item.type === "event" ? "EVENT" as const : "TASK" as const,
-            day: d.getDate(),
-            month: d.getMonth(),
-            year: d.getFullYear(),
-            status: item.type === "task" ? "TODO" as TaskStatus : undefined,
-          };
-        });
-        setCalendarEntries(mapped);
-        if (eventsData.length > 0) {
-          const taskRes = await tasksAPI.getByEvent(eventsData[0].id);
-          setTasks(taskRes.data);
-        }
-      })
-      .catch(() => { setEvents([]); setTasks([]); setCalendarEntries([]); })
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    if (demoMode) {
-      setEvents(DEMO_EVENTS);
-      setTasks(DEMO_ALL_TASKS);
-      setCalendarEntries(DEMO_CALENDAR);
-      setLoading(false);
-      return;
-    }
-    reloadEvents();
-  }, [demoMode]);
-
-  const handleUpdateStatus = async (id: string, status: TaskStatus) => {
-    if (demoMode) { setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t)); return; }
-    try {
-      await tasksAPI.updateStatus(id, status);
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
-    } catch { alert("Не удалось обновить статус"); }
-  };
-
-  const navItems = [
-    { id: "calendar", icon: "📅", label: "Календарь" },
-    { id: "messenger", icon: "💬", label: "Чаты" },
-    { id: "events", icon: "🗂️", label: "Мероприятия" },
-    { id: "kanban", icon: "📋", label: "Канбан задач" },
-    { id: "settings", icon: "⚙️", label: "Настройки" },
-  ];
-
-  return (
-    <div className="dashboard-wrapper">
-      <aside className="dashboard-sidebar">
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--primary)", color: "white", fontSize: 28, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
-            {user.full_name[0]}
-          </div>
-          <h5 style={{ marginTop: 12, marginBottom: 4, fontWeight: 800 }}>{user.full_name}</h5>
-          <span style={{ display: "inline-block", padding: "4px 12px", background: "#eef6ff", color: "var(--primary)", borderRadius: 20, fontSize: 11, fontWeight: 800 }}>
-            {user.global_role}
-          </span>
-          {user.organization && <p style={{ fontSize: 12, color: "#777", marginTop: 6 }}>{user.organization}</p>}
-          {demoMode && <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, marginTop: 4 }}>DEMO</div>}
-        </div>
-        <nav className="sidebar-nav-list">
-          {navItems.map(item => (
-            <button key={item.id} className="nav-link border-0 w-100 text-start"
-              style={{ background: activeTab === item.id ? "#eef6ff" : "#f1f5f9", color: activeTab === item.id ? "var(--primary)" : "#475569" }}
-              onClick={() => setActiveTab(item.id as any)}>
-              <span style={{ marginRight: 10 }}>{item.icon}</span>{item.label}
-            </button>
-          ))}
-          <button className="nav-link border-0 w-100 text-start"
-            style={{ marginTop: 20, background: "#fff1f1", color: "#ef4444" }} onClick={onLogout}>
-            <span style={{ marginRight: 10 }}>🚪</span>Выйти
-          </button>
-        </nav>
-      </aside>
-
-      <main className="dashboard-main-content">
-        {loading ? <LoadingScreen /> : (
-          <>
-            {/* КАЛЕНДАРЬ — кнопка ведёт на вкладку мероприятий */}
-            {activeTab === "calendar" && (
-              <CalendarView
-                entries={calendarEntries}
-                isAdmin={true}
-                onOpenModal={() => setActiveTab("events")}
-                viewDate={viewDate}
-                setViewDate={setViewDate}
-              />
-            )}
-
-            {/* МЕРОПРИЯТИЯ с кнопкой создания */}
-            {activeTab === "events" && (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h2 style={{ fontWeight: 800, margin: 0 }}>Управление мероприятиями</h2>
-                  <button onClick={() => setShowCreateEvent(true)}
-                    style={{ padding: "10px 24px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
-                    + Создать мероприятие
-                  </button>
-                </div>
-                <div className="row g-3">
-                  {events.map(e => (
-                    <div key={e.id} className="col-lg-4 col-md-6">
-                      <div className="event-card-compact">
-                        <div className="date-badge">{e.start_date} — {e.end_date}</div>
-                        <h5 className="event-title">{e.title}</h5>
-                        <div className="event-info">{e.description}</div>
-                        {/* ПРОЦЕНТ ГОТОВНОСТИ — только у организатора */}
-                        {e.readiness_percent !== undefined && (
-                          <div style={{ marginTop: 12 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#777", marginBottom: 4 }}>
-                              <span>Готовность</span>
-                              <span style={{ fontWeight: 700 }}>{e.readiness_percent}%</span>
-                            </div>
-                            <div style={{ background: "#e2e8f0", borderRadius: 4, height: 6 }}>
-                              <div style={{ width: `${e.readiness_percent}%`, background: e.readiness_percent > 80 ? "#16a34a" : "var(--primary)", height: "100%", borderRadius: 4, transition: "width 0.3s" }} />
-                            </div>
-                          </div>
-                        )}
-                        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                          <button onClick={() => navigate(`/events/${e.id}`)}
-                            style={{ flex: 1, padding: 8, background: "#eef6ff", color: "var(--primary)", border: "none", borderRadius: 6, fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
-                            Открыть
-                          </button>
-                          <button style={{ flex: 1, padding: 8, background: "#fff1f1", color: "#ef4444", border: "none", borderRadius: 6, fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
-                            {demoMode ? "Удалить (demo)" : "Удалить"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === "messenger" && <Messenger demoMode={demoMode} myUserId={user.id} />}
-
-            {/* КАНБАН с прогрессом */}
-            {activeTab === "kanban" && (
-              <div>
-                <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Канбан задач</h2>
-                <KanbanView tasks={tasks} onUpdateStatus={handleUpdateStatus} showProgress={true} />
-              </div>
-            )}
-
-            {/* НАСТРОЙКИ */}
-            {activeTab === "settings" && (
-              <SettingsTab user={user} setUser={setUser} demoMode={demoMode} />
-            )}
-          </>
-        )}
-
-        {/* МОДАЛКА СОЗДАНИЯ МЕРОПРИЯТИЯ */}
-        {showCreateEvent && (
-          <CreateEventModal
-            onClose={() => setShowCreateEvent(false)}
-            onCreated={() => { setShowCreateEvent(false); if (!demoMode) reloadEvents(); }}
-            demoMode={demoMode}
-          />
-        )}
-      </main>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// МОДАЛКА СОЗДАНИЯ МЕРОПРИЯТИЯ
-// -----------------------------------------------------------
-const CreateEventModal = ({
-  onClose, onCreated, demoMode,
-}: { onClose: () => void; onCreated: () => void; demoMode: boolean }) => {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [publishNow, setPublishNow] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleCreate = async () => {
-    if (!title.trim()) { setError("Введите название"); return; }
-    setSaving(true); setError("");
-    if (demoMode) { onCreated(); return; }
-    try {
-      const res = await eventsAPI.create({ title: title.trim(), description: description || undefined, start_date: startDate || undefined, end_date: endDate || undefined } as any);
-      // Если выбрано "Опубликовать" — сразу меняем статус
-      if (publishNow && res.data?.id) {
-        await eventsAPI.update(res.data.id, { status: "PUBLISHED" } as any);
-      }
-      onCreated();
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || "Не удалось создать мероприятие");
-    } finally { setSaving(false); }
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "10px 14px", borderRadius: 8,
-    border: "1.5px solid var(--border)", fontSize: 14, boxSizing: "border-box",
-    fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 16,
-  };
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
-      <div style={{ background: "white", borderRadius: 20, padding: 32, width: "100%", maxWidth: 480, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <h3 style={{ fontWeight: 900, margin: 0, color: "var(--primary-dark)" }}>Новое мероприятие</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#777" }}>×</button>
-        </div>
-        {error && <div style={{ background: "#fef2f2", color: "#dc2626", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>{error}</div>}
-        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Название *</label>
-        <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Например: ИТ-Форум 2026" autoFocus style={inputStyle} />
-        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Описание</label>
-        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Дата начала</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }} />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Дата окончания</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }} />
-          </div>
-        </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 16, cursor: "pointer" }}>
-          <input type="checkbox" checked={publishNow} onChange={e => setPublishNow(e.target.checked)} />
-          Опубликовать сразу (видно на странице мероприятий)
-        </label>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={handleCreate} disabled={saving} style={{ flex: 1, padding: 12, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
-            {saving ? "Создание..." : "СОЗДАТЬ"}
-          </button>
-          <button onClick={onClose} style={{ flex: 1, padding: 12, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
-            ОТМЕНА
-          </button>
         </div>
       </div>
-    </div>
-  );
-};
 
-// -----------------------------------------------------------
-// О КЛАСТЕРЕ
-// -----------------------------------------------------------
-const AboutPage = () => (
-  <div style={{ padding: "60px 0" }}>
-    <div className="container" style={{ maxWidth: 800 }}>
-      <h1 style={{ fontWeight: 900, marginBottom: 32 }}>ИТ-Кластер Сибири</h1>
-      <div style={{ background: "white", borderRadius: 16, padding: 40, boxShadow: "0 4px 20px rgba(0,0,0,0.06)", lineHeight: 1.8 }}>
-        <h2 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>О нас</h2>
-        <p style={{ color: "#334155", fontSize: 16, marginBottom: 20 }}>
-          Ассоциация «ИТ-Кластер Сибири» — некоммерческое объединение ведущих технологических компаний,
-          университетов и инновационных предприятий Западной Сибири. Основана в 2019 году с целью координации
-          развития цифровой экономики региона и формирования устойчивой ИТ-экосистемы.
-        </p>
-        <h2 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Миссия</h2>
-        <p style={{ color: "#334155", fontSize: 16, marginBottom: 20 }}>
-          Содействие развитию ИТ-отрасли Сибири путём объединения усилий бизнеса, науки и государства.
-          Мы создаём среду для обмена знаниями, реализации совместных проектов и подготовки кадров,
-          необходимых цифровой трансформации региональной экономики.
-        </p>
-        <h2 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Цели</h2>
-        <ul style={{ color: "#334155", fontSize: 16, paddingLeft: 24 }}>
-          <li style={{ marginBottom: 10 }}>Организация крупных ИТ-мероприятий: форумов, хакатонов, конференций</li>
-          <li style={{ marginBottom: 10 }}>Поддержка стартапов и молодых специалистов через менторские программы</li>
-          <li style={{ marginBottom: 10 }}>Развитие сотрудничества между университетами и технологическим бизнесом</li>
-          <li style={{ marginBottom: 10 }}>Продвижение Омска как центра цифрового развития Западной Сибири</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-);
-
-// -----------------------------------------------------------
-// НОВОСТИ
-// -----------------------------------------------------------
-const DEMO_NEWS = [
-  { id: "n1", title: "ИТ-Форум 2026 открыл регистрацию участников", date: "2026-03-01", preview: "Ежегодный форум соберёт более 500 специалистов из ведущих технологических компаний Сибири." },
-  { id: "n2", title: "Хакатон EventHub завершился победой команды DevMasters", date: "2026-02-20", preview: "В 48-часовом марафоне приняли участие 24 команды. Победители разработали систему автоматической верстки расписания." },
-  { id: "n3", title: "Подписано соглашение с ОмГТУ о подготовке кадров", date: "2026-02-10", preview: "ИТ-Кластер Сибири и Омский государственный технический университет закрепили партнёрство в сфере образования." },
-  { id: "n4", title: "Открытие нового коворкинга «Точка кипения ОмГТУ»", date: "2026-01-25", preview: "Новое пространство вместит 120 рабочих мест и три переговорные комнаты, оснащённые современным оборудованием." },
-  { id: "n5", title: "Робофест Омск 2026: приём заявок начат", date: "2026-01-15", preview: "Городской чемпионат по робототехнике ждёт участников среди школьников 5–11 классов и студентов колледжей." },
-  { id: "n6", title: "Итоги года: ИТ-Кластер Сибири в цифрах", date: "2026-01-05", preview: "Более 2000 участников, 15 мероприятий, 40 партнёров — подводим итоги насыщенного 2025 года." },
-  { id: "n7", title: "Новый грант на развитие образовательных программ", date: "2025-12-20", preview: "Получен грант Фонда содействия инновациям на разработку онлайн-курсов по направлению «Облачные технологии»." },
-];
-
-const NEWS_PAGE_SIZE = 3;
-
-const NewsPage = () => {
-  const [visible, setVisible] = useState(NEWS_PAGE_SIZE);
-
-  return (
-    <div style={{ padding: "60px 0" }}>
-      <div className="container">
-        <h1 style={{ fontWeight: 900, marginBottom: 32 }}>Новости</h1>
-        <div className="row g-3">
-          {DEMO_NEWS.slice(0, visible).map(news => (
-            <div key={news.id} className="col-lg-4 col-md-6">
-              <div style={{
-                background: "white", borderRadius: 16, padding: 24,
-                boxShadow: "0 4px 20px rgba(0,0,0,0.06)", height: "100%",
-                display: "flex", flexDirection: "column",
-              }}>
-                <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 10 }}>{news.date}</div>
-                <h5 style={{ fontWeight: 800, marginBottom: 12, color: "var(--primary-dark)", lineHeight: 1.4 }}>{news.title}</h5>
-                <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, flex: 1 }}>{news.preview}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        {visible < DEMO_NEWS.length && (
-          <div style={{ textAlign: "center", marginTop: 32 }}>
-            <button
-              onClick={() => setVisible(v => v + NEWS_PAGE_SIZE)}
+      {/* FEATURES */}
+      <div id="features" className="landing-features">
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <div
               style={{
-                padding: "12px 36px", background: "var(--primary)", color: "white",
-                border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 800,
+                color: "var(--primary)",
+                textTransform: "uppercase",
+                letterSpacing: 2,
+                marginBottom: 8,
               }}
             >
-              Показать ещё
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// -----------------------------------------------------------
-// УЧАСТНИКИ КЛАСТЕРА
-// -----------------------------------------------------------
-const DEMO_MEMBERS = [
-  { id: "m1", name: "ОмГТУ", description: "Омский государственный технический университет — ведущий технический вуз региона, кузница ИТ-кадров Сибири." },
-  { id: "m2", name: "СКБ Контур", description: "Один из крупнейших разработчиков бухгалтерского и правового ПО в России, имеет офис в Омске." },
-  { id: "m3", name: "Sber Technologies Omsk", description: "Омский центр разработки Сбера — более 300 инженеров, занимаются мобильными и облачными продуктами." },
-  { id: "m4", name: "IT52", description: "Омская студия веб-разработки и цифрового маркетинга, реализовала более 200 проектов для B2B-сектора." },
-  { id: "m5", name: "Точка кипения ОмГТУ", description: "Коворкинг и акселератор инноваций, площадка для стартапов, воркшопов и хакатонов." },
-  { id: "m6", name: "Omsk DataLab", description: "Аналитическая компания, специализирующаяся на machine learning и анализе больших данных для промышленности." },
-];
-
-const MembersPage = () => (
-  <div style={{ padding: "60px 0" }}>
-    <div className="container">
-      <h1 style={{ fontWeight: 900, marginBottom: 12 }}>Участники кластера</h1>
-      <p style={{ color: "#64748b", fontSize: 16, marginBottom: 40 }}>
-        Ведущие компании, университеты и организации Омска и Западной Сибири.
-      </p>
-      <div className="row g-3">
-        {DEMO_MEMBERS.map(m => (
-          <div key={m.id} className="col-lg-4 col-md-6">
-            <div style={{
-              background: "white", borderRadius: 16, padding: 24,
-              boxShadow: "0 4px 20px rgba(0,0,0,0.06)", height: "100%",
-              borderTop: "4px solid var(--primary)",
-            }}>
-              <h5 style={{ fontWeight: 900, marginBottom: 10, color: "var(--primary-dark)" }}>{m.name}</h5>
-              <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, margin: 0 }}>{m.description}</p>
+              Возможности
             </div>
+            <h2
+              style={{
+                fontSize: 32,
+                fontWeight: 900,
+                color: "var(--primary-dark)",
+              }}
+            >
+              Всё что нужно — в одной платформе
+            </h2>
           </div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-// -----------------------------------------------------------
-// КОНТАКТЫ
-// -----------------------------------------------------------
-const ContactsPage = () => (
-  <div style={{ padding: "60px 0" }}>
-    <div className="container" style={{ maxWidth: 700 }}>
-      <h1 style={{ fontWeight: 900, marginBottom: 32 }}>Контакты</h1>
-      <div style={{ background: "white", borderRadius: 16, padding: 40, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
-        <div style={{ marginBottom: 28 }}>
-          <h3 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Адрес</h3>
-          <p style={{ color: "#334155", fontSize: 16, lineHeight: 1.7 }}>
-            644050, Омск, пр. Мира, 11<br />
-            Точка кипения ОмГТУ, офис 312
-          </p>
-        </div>
-        <div style={{ marginBottom: 28 }}>
-          <h3 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Связь</h3>
-          <p style={{ color: "#334155", fontSize: 16, marginBottom: 8 }}>
-            Email: <a href="mailto:info@itcluster55.ru" style={{ color: "var(--primary)", fontWeight: 700 }}>info@itcluster55.ru</a>
-          </p>
-          <p style={{ color: "#334155", fontSize: 16 }}>
-            Телефон: <a href="tel:+73812000000" style={{ color: "var(--primary)", fontWeight: 700 }}>+7 (3812) 00-00-00</a>
-          </p>
-        </div>
-        <div>
-          <h3 style={{ fontWeight: 800, marginBottom: 16, color: "var(--primary-dark)" }}>Соцсети</h3>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {[
-              { label: "ВКонтакте", href: "#" },
-              { label: "Telegram", href: "#" },
-              { label: "GitHub", href: "#" },
-            ].map(s => (
-              <a
-                key={s.label}
-                href={s.href}
-                style={{
-                  display: "inline-block", padding: "8px 20px",
-                  background: "var(--bg-light, #f1f5f9)", color: "var(--primary)",
-                  borderRadius: 100, fontWeight: 800, fontSize: 14,
-                  textDecoration: "none", border: "1.5px solid var(--border, #e2e8f0)",
-                }}
-              >
-                {s.label}
-              </a>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: 20,
+            }}
+          >
+            {features.map((f) => (
+              <div key={f.title} className="feature-card">
+                <div style={{ fontSize: 36, marginBottom: 14 }}>{f.icon}</div>
+                <h3
+                  style={{
+                    fontWeight: 800,
+                    fontSize: 16,
+                    color: "var(--primary-dark)",
+                    marginBottom: 8,
+                  }}
+                >
+                  {f.title}
+                </h3>
+                <p
+                  style={{
+                    fontSize: 14,
+                    color: "var(--text-muted)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {f.desc}
+                </p>
+              </div>
             ))}
           </div>
         </div>
       </div>
+
+      {/* FOOTER CTA */}
+      <div
+        style={{
+          padding: "64px 48px",
+          background: "var(--primary-dark)",
+          textAlign: "center",
+          color: "white",
+        }}
+      >
+        <h2 style={{ fontSize: 28, fontWeight: 900, marginBottom: 12 }}>
+          Готовы начать?
+        </h2>
+        <p
+          style={{
+            color: "rgba(255,255,255,0.6)",
+            marginBottom: 28,
+            fontSize: 16,
+          }}
+        >
+          Создайте первое мероприятие прямо сейчас
+        </p>
+        <button
+          onClick={() => navigate("/login")}
+          style={{
+            padding: "14px 40px",
+            background: "white",
+            color: "var(--primary-dark)",
+            border: "none",
+            borderRadius: 100,
+            fontWeight: 900,
+            fontSize: 16,
+            cursor: "pointer",
+            fontFamily: "Nunito, sans-serif",
+          }}
+        >
+          Войти в EventHub
+        </button>
+        <div
+          style={{
+            marginTop: 32,
+            fontSize: 12,
+            color: "rgba(255,255,255,0.35)",
+          }}
+        >
+          EventHub · Цифровой хакатон 2026 · ОмГТУ × ИТ-Кластер Сибири
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+}
 
-// -----------------------------------------------------------
-// ГЛАВНЫЙ КОМПОНЕНТ
-// -----------------------------------------------------------
-export default function App() {
-  const { user, setUser, loading, logout, demoMode, setDemoMode } = useAuth();
+// ═══════════════════════════════════════════════════════════════
+// 2. AUTH PAGE
+// ═══════════════════════════════════════════════════════════════
+function AuthPage({
+  onLogin,
+  onRegister,
+  loading,
+  error,
+}: {
+  onLogin: (email: string, password: string) => void;
+  onRegister: (email: string, password: string, full_name: string) => void;
+  loading: boolean;
+  error: string;
+}) {
+  const [isRegister, setIsRegister] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const navigate = useNavigate();
 
-  const handleLogin = (u: User, demo: boolean) => {
-    if (demo) {
-      sessionStorage.setItem("demo_user", JSON.stringify(u));
-      setDemoMode(true);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isRegister) {
+      onRegister(email, password, fullName);
+    } else {
+      onLogin(email, password);
     }
-    setUser(u);
+  };
+
+  const switchMode = () => {
+    setIsRegister(!isRegister);
+    setEmail("");
+    setPassword("");
+    setFullName("");
+  };
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div
+            style={{ fontSize: 36, marginBottom: 8, cursor: "pointer" }}
+            onClick={() => navigate("/")}
+          >
+            🚀
+          </div>
+          <h1
+            style={{
+              fontWeight: 900,
+              fontSize: 24,
+              color: "var(--primary-dark)",
+              marginBottom: 4,
+            }}
+          >
+            EventHub
+          </h1>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
+            {isRegister ? "Регистрация" : "Вход в платформу"}
+          </p>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              background: "#fef2f2",
+              color: "#dc2626",
+              padding: "10px 14px",
+              borderRadius: 8,
+              marginBottom: 16,
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          {isRegister && (
+            <div style={{ marginBottom: 14 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  marginBottom: 5,
+                }}
+              >
+                ФИО
+              </label>
+              <input
+                type="text"
+                className="auth-input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Иванов Иван Иванович"
+                required
+              />
+            </div>
+          )}
+          <div style={{ marginBottom: 14 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 11,
+                fontWeight: 800,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                marginBottom: 5,
+              }}
+            >
+              Email
+            </label>
+            <input
+              type="email"
+              className="auth-input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="example@it.ru"
+              required
+            />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 11,
+                fontWeight: 800,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                marginBottom: 5,
+              }}
+            >
+              Пароль
+            </label>
+            <input
+              type="password"
+              className="auth-input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              minLength={4}
+            />
+          </div>
+          <button type="submit" className="auth-btn" disabled={loading}>
+            {loading ? (isRegister ? "Регистрация..." : "Вход...") : (isRegister ? "Зарегистрироваться" : "Войти")}
+          </button>
+        </form>
+
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <span
+            onClick={switchMode}
+            style={{
+              fontSize: 13,
+              color: "var(--primary)",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {isRegister ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться"}
+          </span>
+        </div>
+
+        {/* Demo buttons — показываем только на странице входа */}
+        {!isRegister && (
+          <div
+            style={{
+              marginTop: 16,
+              borderTop: "1.5px solid var(--border)",
+              paddingTop: 16,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                textAlign: "center",
+                marginBottom: 10,
+              }}
+            >
+              Быстрый Demo вход
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {[
+                { email: "org@it.ru", pass: "org", label: "👔 Организатор", bg: "var(--primary)" },
+                { email: "user@it.ru", pass: "user", label: "🙋 Участник", bg: "#16a34a" },
+                { email: "curator@it.ru", pass: "curator", label: "📋 Куратор", bg: "#6b7280" },
+              ].map((d) => (
+                <button
+                  key={d.email}
+                  onClick={() => {
+                    setEmail(d.email);
+                    setPassword(d.pass);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: 8,
+                    background: d.bg,
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontFamily: "Nunito, sans-serif",
+                  }}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ textAlign: "center", marginTop: 12 }}>
+          <span
+            onClick={() => navigate("/")}
+            style={{
+              fontSize: 13,
+              color: "var(--text-muted)",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            ← На главную
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. CALENDAR  (FIX #3 — настоящая сетка-календарь)
+// ═══════════════════════════════════════════════════════════════
+function CalendarView({
+  events,
+  tasks,
+}: {
+  events: EventData[];
+  tasks: Task[];
+}) {
+  const [viewDate, setViewDate] = useState(() => new Date(2026, 2, 1));
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const today = new Date();
+  const lastDay = new Date(year, month + 1, 0);
+  const startDow = (new Date(year, month, 1).getDay() + 6) % 7; // Пн=0
+
+  const cells: { day: number; mo: number; yr: number; cur: boolean }[] = [];
+  const prevLast = new Date(year, month, 0).getDate();
+  for (let i = startDow - 1; i >= 0; i--)
+    cells.push({ day: prevLast - i, mo: month - 1, yr: year, cur: false });
+  for (let d = 1; d <= lastDay.getDate(); d++)
+    cells.push({ day: d, mo: month, yr: year, cur: true });
+  while (cells.length < 42)
+    cells.push({
+      day: cells.length - (startDow + lastDay.getDate()) + 1,
+      mo: month + 1,
+      yr: year,
+      cur: false,
+    });
+
+  const monthNames = [
+    "Январь","Февраль","Март","Апрель","Май","Июнь",
+    "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь",
+  ];
+
+  const getItems = (d: number, mo: number, yr: number) => {
+    const ds = `${yr}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const items: { label: string; color: string; bg: string }[] = [];
+
+    events.forEach((ev) => {
+      if (ev.start_date && ev.end_date && ds >= ev.start_date && ds <= ev.end_date) {
+        items.push({ label: ev.title.slice(0, 16), color: "#2563eb", bg: "#e8f0fe" });
+      }
+    });
+
+    tasks.forEach((t) => {
+      if (t.due_date === ds) {
+        const done = t.status === "DONE";
+        items.push({
+          label: (done ? "✓ " : "") + t.title.slice(0, 14),
+          color: done ? "#16a34a" : t.status === "IN_PROGRESS" ? "#d97706" : "#64748b",
+          bg: done ? "#f0fdf4" : t.status === "IN_PROGRESS" ? "#fffbeb" : "#f1f5f9",
+        });
+      }
+    });
+
+    return items;
+  };
+
+  const isToday = (d: number, mo: number, yr: number) =>
+    d === today.getDate() && mo === today.getMonth() && yr === today.getFullYear();
+
+  return (
+    <div>
+      {/* Навигация по месяцам */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
+        <button
+          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          style={{
+            padding: "8px 16px",
+            background: "white",
+            border: "1.5px solid var(--border)",
+            borderRadius: 8,
+            fontWeight: 800,
+            cursor: "pointer",
+            fontFamily: "Nunito, sans-serif",
+            fontSize: 13,
+          }}
+        >
+          ← Назад
+        </button>
+        <h2 style={{ fontWeight: 900, fontSize: 20, color: "var(--primary-dark)" }}>
+          {monthNames[month]} {year}
+        </h2>
+        <button
+          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          style={{
+            padding: "8px 16px",
+            background: "white",
+            border: "1.5px solid var(--border)",
+            borderRadius: 8,
+            fontWeight: 800,
+            cursor: "pointer",
+            fontFamily: "Nunito, sans-serif",
+            fontSize: 13,
+          }}
+        >
+          Вперёд →
+        </button>
+      </div>
+
+      {/* Дни недели */}
+      <div className="cal-grid" style={{ marginBottom: 4 }}>
+        {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((d) => (
+          <div
+            key={d}
+            style={{
+              textAlign: "center",
+              fontWeight: 800,
+              fontSize: 12,
+              color: "var(--text-muted)",
+              padding: "8px 0",
+              textTransform: "uppercase",
+            }}
+          >
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Ячейки */}
+      <div className="cal-grid">
+        {cells.map((c, idx) => {
+          const items = c.cur ? getItems(c.day, c.mo, c.yr) : [];
+          const todayCls = isToday(c.day, c.mo, c.yr) ? " today" : "";
+          const otherCls = !c.cur ? " other-month" : "";
+          return (
+            <div key={idx} className={`cal-cell${todayCls}${otherCls}`}>
+              <div className="cal-day-num">{c.day}</div>
+              {items.slice(0, 3).map((it, j) => (
+                <div
+                  key={j}
+                  className="cal-dot"
+                  style={{ color: it.color, background: it.bg }}
+                  title={it.label}
+                >
+                  {it.label}
+                </div>
+              ))}
+              {items.length > 3 && (
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: "var(--text-muted)",
+                    fontWeight: 700,
+                    paddingLeft: 4,
+                  }}
+                >
+                  +{items.length - 3}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Легенда */}
+      <div
+        style={{
+          display: "flex",
+          gap: 20,
+          marginTop: 16,
+          fontSize: 12,
+          fontWeight: 700,
+          color: "var(--text-muted)",
+          flexWrap: "wrap",
+        }}
+      >
+        {[
+          { bg: "#e8f0fe", bc: "#2563eb", label: "Мероприятие" },
+          { bg: "#f1f5f9", bc: "#64748b", label: "Задача" },
+          { bg: "#fffbeb", bc: "#d97706", label: "В работе" },
+          { bg: "#f0fdf4", bc: "#16a34a", label: "Готово" },
+        ].map((l) => (
+          <span key={l.label}>
+            <span
+              style={{
+                display: "inline-block",
+                width: 10,
+                height: 10,
+                borderRadius: 3,
+                background: l.bg,
+                border: `1px solid ${l.bc}`,
+                marginRight: 4,
+              }}
+            />
+            {l.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3b. CHAT VIEW — мессенджер (группы по мероприятию + ЛС)
+// ═══════════════════════════════════════════════════════════════
+interface DemoChatRoom {
+  id: string;
+  event_id: string | null;
+  type: "GROUP" | "DIRECT";
+  name: string;
+  avatar: string;
+}
+
+interface DemoChatMsg {
+  id: string;
+  room_id: string;
+  user_id: string;
+  user_name: string;
+  text: string;
+  created_at: string;
+}
+
+const DEMO_CHAT_ROOMS: DemoChatRoom[] = [
+  { id: "cr1", event_id: "e1", type: "GROUP", name: "ИТ-Форум 2026 — общий", avatar: "🏢" },
+  { id: "cr2", event_id: "e2", type: "GROUP", name: "Хакатон 2026 — команда", avatar: "🚀" },
+  { id: "cr3", event_id: null, type: "DIRECT", name: "Организатор Иванов", avatar: "О" },
+  { id: "cr4", event_id: null, type: "DIRECT", name: "Куратор Секционов", avatar: "К" },
+];
+
+const DEMO_CHAT_MESSAGES: DemoChatMsg[] = [
+  // cr1 — ИТ-Форум общий
+  { id: "m1", room_id: "cr1", user_id: "u1", user_name: "Организатор Иванов", text: "Всем привет! Напоминаю: ИТ-Форум стартует 16 марта. Проверяйте свои секции.", created_at: "2026-03-15T09:00:00Z" },
+  { id: "m2", room_id: "cr1", user_id: "u3", user_name: "Куратор Секционов", text: "Секция ИнфоБез готова на 60%. Два спикера подтверждены, одного ищем.", created_at: "2026-03-15T09:05:00Z" },
+  { id: "m3", room_id: "cr1", user_id: "u2", user_name: "Иван Участников", text: "Подскажите, где можно посмотреть расписание докладов?", created_at: "2026-03-15T09:10:00Z" },
+  { id: "m4", room_id: "cr1", user_id: "u1", user_name: "Организатор Иванов", text: "Расписание будет в разделе «Программа» после публикации. Скоро!", created_at: "2026-03-15T09:12:00Z" },
+  { id: "m5", room_id: "cr1", user_id: "u3", user_name: "Куратор Секционов", text: "Зал А забронирован, трансляцию настроим к 18-му.", created_at: "2026-03-16T10:00:00Z" },
+  { id: "m6", room_id: "cr1", user_id: "u2", user_name: "Иван Участников", text: "Спасибо! Буду на секции ИнфоБез точно 👍", created_at: "2026-03-16T10:05:00Z" },
+  // cr2 — Хакатон
+  { id: "m10", room_id: "cr2", user_id: "u1", user_name: "Организатор Иванов", text: "Команды, напоминаю: дедлайн загрузки проектов — 19 марта, 23:59!", created_at: "2026-03-16T08:00:00Z" },
+  { id: "m11", room_id: "cr2", user_id: "u2", user_name: "Иван Участников", text: "Мы на кейсе 3 — EventHub. Уже есть бэкенд и фронт 💪", created_at: "2026-03-16T08:15:00Z" },
+  { id: "m12", room_id: "cr2", user_id: "u3", user_name: "Куратор Секционов", text: "Красавцы! Если нужна помощь с деплоем — пишите.", created_at: "2026-03-16T08:20:00Z" },
+  { id: "m13", room_id: "cr2", user_id: "u1", user_name: "Организатор Иванов", text: "WiFi в аудиториях проверяем сегодня. Если глючит — сразу сигнальте в чат.", created_at: "2026-03-17T09:00:00Z" },
+  // cr3 — ЛС с Организатором
+  { id: "m20", room_id: "cr3", user_id: "u1", user_name: "Организатор Иванов", text: "Привет! Как дела с подготовкой?", created_at: "2026-03-15T14:00:00Z" },
+  { id: "m21", room_id: "cr3", user_id: "u2", user_name: "Иван Участников", text: "Всё идёт по плану. Материалы готовлю.", created_at: "2026-03-15T14:05:00Z" },
+  { id: "m22", room_id: "cr3", user_id: "u1", user_name: "Организатор Иванов", text: "Отлично, дедлайн 19-го. Если нужна помощь — пиши.", created_at: "2026-03-15T14:07:00Z" },
+  // cr4 — ЛС с Куратором
+  { id: "m30", room_id: "cr4", user_id: "u3", user_name: "Куратор Секционов", text: "Привет! Видел твою регистрацию на ИнфоБез. Рад что будешь!", created_at: "2026-03-16T11:00:00Z" },
+  { id: "m31", room_id: "cr4", user_id: "u2", user_name: "Иван Участников", text: "Обязательно буду! Очень интересная программа.", created_at: "2026-03-16T11:05:00Z" },
+];
+
+function ChatView({
+  user,
+  demoMode,
+}: {
+  user: User;
+  demoMode: boolean;
+}) {
+  const [rooms, setRooms] = useState<DemoChatRoom[]>([]);
+  const [messages, setMessages] = useState<DemoChatMsg[]>([]);
+  const [activeRoomId, setActiveRoomId] = useState("");
+  const [inputText, setInputText] = useState("");
+  const [loadingRooms, setLoadingRooms] = useState(true);
+  const [showNewDM, setShowNewDM] = useState(false);
+  const [dmQuery, setDmQuery] = useState("");
+  const [dmResults, setDmResults] = useState<User[]>([]);
+  const [dmSearching, setDmSearching] = useState(false);
+
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Загрузка комнат
+  useEffect(() => {
+    if (demoMode) {
+      setRooms(DEMO_CHAT_ROOMS);
+      setMessages([...DEMO_CHAT_MESSAGES]);
+      setActiveRoomId(DEMO_CHAT_ROOMS[0]?.id || "");
+      setLoadingRooms(false);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await chatAPI.getMy();
+        const apiRooms: DemoChatRoom[] = (res.data || []).map((r: ChatRoom) => ({
+          id: r.id,
+          event_id: r.event_id || null,
+          type: r.type,
+          name: (r as any).name || (r.type === "GROUP" ? `Группа ${r.id.slice(0, 6)}` : `ЛС ${r.id.slice(0, 6)}`),
+          avatar: r.type === "GROUP" ? "🏢" : "💬",
+        }));
+        setRooms(apiRooms);
+        if (apiRooms.length) {
+          setActiveRoomId(apiRooms[0].id);
+          try {
+            const msgRes = await chatAPI.getMessages(apiRooms[0].id, { limit: 50 });
+            const items = msgRes.data?.items || msgRes.data || [];
+            setMessages(
+              (Array.isArray(items) ? items : []).map((m: ChatMessage) => ({
+                id: m.id,
+                room_id: m.room_id,
+                user_id: m.user_id,
+                user_name: m.user_name || "Пользователь",
+                text: m.text,
+                created_at: m.created_at,
+              }))
+            );
+          } catch {}
+        }
+      } catch {}
+      finally { setLoadingRooms(false); }
+    })();
+  }, [demoMode]);
+
+  // Прокрутка вниз при смене комнаты или новых сообщениях
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [activeRoomId, messages]);
+
+  // Сообщения для активной комнаты
+  const roomMessages = useMemo(
+    () => messages.filter((m) => m.room_id === activeRoomId).sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    [messages, activeRoomId]
+  );
+  const activeRoom = rooms.find((r) => r.id === activeRoomId);
+
+  // Последнее сообщение для превью в списке
+  const lastMsg = useCallback(
+    (roomId: string) => {
+      const msgs = messages.filter((m) => m.room_id === roomId);
+      if (!msgs.length) return null;
+      return msgs.sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    },
+    [messages]
+  );
+
+  // Отправка
+  const sendMessage = async () => {
+    if (!inputText.trim() || !activeRoomId) return;
+    const text = inputText.trim();
+    setInputText("");
+
+    if (demoMode) {
+      const newMsg: DemoChatMsg = {
+        id: `msg-${Date.now()}`,
+        room_id: activeRoomId,
+        user_id: user.id,
+        user_name: user.full_name,
+        text,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, newMsg]);
+    } else {
+      try {
+        const res = await chatAPI.sendMessage(activeRoomId, { text });
+        const sent: ChatMessage = res.data;
+        const newMsg: DemoChatMsg = {
+          id: sent.id,
+          room_id: sent.room_id,
+          user_id: sent.user_id,
+          user_name: sent.user_name || user.full_name,
+          text: sent.text,
+          created_at: sent.created_at,
+        };
+        setMessages((prev) => [...prev, newMsg]);
+      } catch {
+        // Fallback — добавляем локально если бэкенд недоступен
+        const newMsg: DemoChatMsg = {
+          id: `msg-${Date.now()}`,
+          room_id: activeRoomId,
+          user_id: user.id,
+          user_name: user.full_name,
+          text,
+          created_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, newMsg]);
+      }
+    }
+  };
+
+  // Переключение комнаты
+  const switchRoom = async (roomId: string) => {
+    setActiveRoomId(roomId);
+    if (!demoMode) {
+      try {
+        const res = await chatAPI.getMessages(roomId, { limit: 50 });
+        const items = res.data?.items || res.data || [];
+        const fetched = (Array.isArray(items) ? items : []).map((m: ChatMessage) => ({
+          id: m.id,
+          room_id: m.room_id,
+          user_id: m.user_id,
+          user_name: m.user_name || "Пользователь",
+          text: m.text,
+          created_at: m.created_at,
+        }));
+        setMessages((prev) => [
+          ...prev.filter((m) => m.room_id !== roomId),
+          ...fetched,
+        ]);
+      } catch {}
+    }
+  };
+
+  // Поиск для нового ЛС
+  const searchDM = async (q: string) => {
+    setDmQuery(q);
+    if (q.length < 2) { setDmResults([]); return; }
+    setDmSearching(true);
+    if (demoMode) {
+      const demoUsers = ([
+        { id: "u1", email: "org@it.ru", full_name: "Организатор Иванов", global_role: "ORGANIZER" as GlobalRole },
+        { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "PARTICIPANT" as GlobalRole },
+        { id: "u5", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "PARTICIPANT" as GlobalRole },
+      ] as User[]).filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase()));
+      setDmResults(demoUsers);
+    } else {
+      try {
+        const res = await usersAPI.search(q);
+        setDmResults((res.data || []).filter((u: User) => u.id !== user.id));
+      } catch { setDmResults([]); }
+    }
+    setDmSearching(false);
+  };
+
+  const startDM = async (targetUser: User) => {
+    // Проверяем, есть ли уже ЛС
+    const existing = rooms.find(
+      (r) => r.type === "DIRECT" && r.name === targetUser.full_name
+    );
+    if (existing) {
+      setActiveRoomId(existing.id);
+      setShowNewDM(false);
+      setDmQuery("");
+      setDmResults([]);
+      return;
+    }
+
+    let roomId = `cr-dm-${Date.now()}`;
+    if (!demoMode) {
+      try {
+        const res = await chatAPI.createDirect({ user_id: targetUser.id });
+        roomId = res.data.id;
+      } catch {}
+    }
+
+    const newRoom: DemoChatRoom = {
+      id: roomId,
+      event_id: null,
+      type: "DIRECT",
+      name: targetUser.full_name,
+      avatar: targetUser.full_name[0],
+    };
+    setRooms((prev) => [...prev, newRoom]);
+    setActiveRoomId(newRoom.id);
+    setShowNewDM(false);
+    setDmQuery("");
+    setDmResults([]);
+  };
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+
+  if (loadingRooms) return <Spinner label="Загружаем чаты..." />;
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)" }}>💬 Мессенджер</h1>
+        <button
+          onClick={() => setShowNewDM(true)}
+          style={{ padding: "8px 18px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+        >
+          + Новое сообщение
+        </button>
+      </div>
+
+      <div className="chat-wrapper">
+        {/* Список комнат */}
+        <div className="chat-rooms-list">
+          <div className="chat-rooms-header">
+            Чаты
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{rooms.length}</span>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {rooms.map((room) => {
+              const last = lastMsg(room.id);
+              return (
+                <div
+                  key={room.id}
+                  className={`chat-room-item${activeRoomId === room.id ? " active" : ""}`}
+                  onClick={() => switchRoom(room.id)}
+                >
+                  <div
+                    style={{
+                      width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                      background: room.type === "GROUP" ? "var(--primary)" : "#16a34a",
+                      color: "white", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontWeight: 900, fontSize: room.avatar.length > 1 ? 16 : 14,
+                    }}
+                  >
+                    {room.avatar}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--primary-dark)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {room.name}
+                    </div>
+                    {last && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+                        {last.user_id === user.id ? "Вы: " : ""}{last.text.slice(0, 30)}{last.text.length > 30 ? "…" : ""}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, fontWeight: 600 }}>
+                    {room.type === "GROUP" ? "👥" : "👤"}
+                  </div>
+                </div>
+              );
+            })}
+            {rooms.length === 0 && (
+              <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                Нет чатов
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Область сообщений */}
+        {activeRoom ? (
+          <div className="chat-messages-area">
+            <div className="chat-messages-header">
+              {activeRoom.type === "GROUP" ? "👥 " : "👤 "}{activeRoom.name}
+            </div>
+
+            <div className="chat-messages-scroll" ref={scrollRef}>
+              {roomMessages.length === 0 ? (
+                <div className="chat-empty">Начните диалог — напишите первое сообщение</div>
+              ) : (
+                roomMessages.map((msg) => {
+                  const isMine = msg.user_id === user.id;
+                  return (
+                    <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
+                      {!isMine && activeRoom.type === "GROUP" && (
+                        <div style={{ fontSize: 10, fontWeight: 800, color: "var(--primary)", marginBottom: 2, paddingLeft: 4 }}>
+                          {msg.user_name}
+                        </div>
+                      )}
+                      <div className={`chat-msg ${isMine ? "mine" : "theirs"}`}>
+                        {msg.text}
+                      </div>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2, padding: "0 4px" }}>
+                        {formatTime(msg.created_at)}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="chat-input-bar">
+              <input
+                type="text"
+                placeholder="Написать сообщение..."
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+              />
+              <button onClick={sendMessage}>Отправить</button>
+            </div>
+          </div>
+        ) : (
+          <div className="chat-messages-area">
+            <div className="chat-empty">Выберите чат слева</div>
+          </div>
+        )}
+      </div>
+
+      {/* Модалка нового ЛС */}
+      {showNewDM && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+          <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h3 style={{ fontWeight: 900, margin: 0, color: "var(--primary-dark)", fontSize: 16 }}>Новое сообщение</h3>
+              <button onClick={() => { setShowNewDM(false); setDmQuery(""); setDmResults([]); }} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#777" }}>×</button>
+            </div>
+            <input
+              type="text"
+              placeholder="Поиск по ФИО..."
+              value={dmQuery}
+              onChange={(e) => searchDM(e.target.value)}
+              autoFocus
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 14, boxSizing: "border-box", fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 12 }}
+            />
+            {dmSearching && <div style={{ color: "#777", fontSize: 13, textAlign: "center", padding: 8 }}>Поиск...</div>}
+            {dmResults.length > 0 && (
+              <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+                {dmResults.map((u) => (
+                  <div
+                    key={u.id}
+                    onClick={() => startDM(u)}
+                    style={{ padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, transition: "background 0.15s" }}
+                    onMouseOver={(e) => (e.currentTarget.style.background = "#f0f7ff")}
+                    onMouseOut={(e) => (e.currentTarget.style.background = "white")}
+                  >
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--primary)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14, flexShrink: 0 }}>
+                      {u.full_name[0]}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "var(--primary-dark)" }}>{u.full_name}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {dmQuery.length >= 2 && dmResults.length === 0 && !dmSearching && (
+              <div style={{ color: "#aaa", textAlign: "center", padding: 16, fontSize: 13 }}>Никого не найдено</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. ORGANIZER DASHBOARD
+//    FIX #1: events подтягиваются из DEMO_EVENTS
+//    FIX #2: новая задача привязывается к selectedEventId
+//    FIX #3: CalendarView вместо пустого списка
+//    FIX #4: канбан — понятные кнопки переходов
+// ═══════════════════════════════════════════════════════════════
+const COL_CFG: Record<TaskStatus, { label: string; icon: string; color: string }> = {
+  TODO: { label: "К выполнению", icon: "📋", color: "#64748b" },
+  IN_PROGRESS: { label: "В работе", icon: "🔧", color: "#d97706" },
+  DONE: { label: "Выполнено", icon: "✅", color: "#16a34a" },
+};
+
+function OrganizerDashboard({
+  user,
+  onLogout,
+  demoMode,
+}: {
+  user: User;
+  onLogout: () => void;
+  demoMode: boolean;
+}) {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<"events" | "kanban" | "calendar" | "chat" | "settings">("events");
+  const [events, setEvents] = useState<EventData[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selEv, setSelEv] = useState("");
+
+  const [newTitle, setNewTitle] = useState("");
+  const [newDue, setNewDue] = useState("");
+
+  // --- Загрузка данных ---
+  useEffect(() => {
+    setLoading(true);
+    if (demoMode) {
+      setEvents(DEMO_EVENTS);
+      setTasks([...DEMO_TASKS]); // копия чтобы мутировать
+      setSelEv(DEMO_EVENTS[0]?.id || "");
+      setLoading(false);
+      return;
+    }
+    (async () => {
+      try {
+        const evRes = await eventsAPI.getAll();
+        const evs: EventData[] = evRes.data || [];
+        setEvents(evs);
+        if (evs.length) setSelEv(evs[0].id);
+        const all: Task[] = [];
+        for (const ev of evs) {
+          try {
+            const r = await tasksAPI.getByEvent(ev.id);
+            all.push(...(r.data || []));
+          } catch {}
+        }
+        setTasks(all);
+      } catch {}
+      finally { setLoading(false); }
+    })();
+  }, [demoMode]);
+
+  const filtered = useMemo(() => tasks.filter((t) => t.event_id === selEv), [tasks, selEv]);
+  const selEvent = events.find((e) => e.id === selEv);
+
+  const pct = useCallback(
+    (eid: string) => {
+      const ts = tasks.filter((t) => t.event_id === eid);
+      if (!ts.length) return 0;
+      return Math.round((ts.filter((t) => t.status === "DONE").length / ts.length) * 100);
+    },
+    [tasks]
+  );
+
+  // --- Канбан: смена статуса ---
+  const moveTask = async (id: string, s: TaskStatus) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: s } : t)));
+    if (!demoMode) try { await tasksAPI.updateStatus(id, s); } catch {}
+  };
+
+  // --- FIX #2: добавление задачи ПРИВЯЗЫВАЕТСЯ к selEv ---
+  const addTask = async () => {
+    if (!newTitle.trim() || !selEv) return;
+    const newTask: Task = {
+      id: `t-${Date.now()}`,
+      event_id: selEv,
+      title: newTitle.trim(),
+      assigned_to: user.id,
+      assigned_to_name: user.full_name,
+      created_by: user.id,
+      status: "TODO",
+      due_date: newDue || null,
+    };
+    if (demoMode) {
+      setTasks((prev) => [...prev, newTask]);
+    } else {
+      try {
+        const res = await tasksAPI.create({
+          event_id: selEv,
+          title: newTitle.trim(),
+          due_date: newDue || undefined,
+        });
+        setTasks((prev) => [...prev, res.data]);
+      } catch {
+        setTasks((prev) => [...prev, newTask]);
+      }
+    }
+    setNewTitle("");
+    setNewDue("");
+  };
+
+  const delTask = async (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    if (!demoMode) try { await tasksAPI.delete(id); } catch {}
+  };
+
+  const navItems = [
+    { id: "events", icon: "📋", label: "Мероприятия" },
+    { id: "kanban", icon: "📌", label: "Канбан задач" },
+    { id: "calendar", icon: "📅", label: "Календарь" },
+    { id: "chat", icon: "💬", label: "Мессенджер" },
+    { id: "settings", icon: "⚙️", label: "Настройки" },
+  ];
+
+  return (
+    <div className="dashboard-wrapper">
+      {/* SIDEBAR */}
+      <aside className="dashboard-sidebar">
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              width: 72, height: 72, borderRadius: "50%", background: "var(--primary)",
+              color: "white", fontSize: 26, fontWeight: 900, display: "flex",
+              alignItems: "center", justifyContent: "center", margin: "0 auto",
+            }}
+          >
+            {user.full_name[0]}
+          </div>
+          <h5 style={{ marginTop: 10, marginBottom: 4, fontWeight: 800, fontSize: 15 }}>
+            {user.full_name}
+          </h5>
+          <span
+            style={{
+              display: "inline-block", padding: "3px 10px", background: "#e8f0fe",
+              color: "var(--primary)", borderRadius: 100, fontSize: 11, fontWeight: 800,
+            }}
+          >
+            ORGANIZER
+          </span>
+          {user.organization && (
+            <p style={{ fontSize: 11, color: "#777", marginTop: 5 }}>
+              {user.organization}
+            </p>
+          )}
+          {demoMode && (
+            <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700, marginTop: 3 }}>
+              DEMO
+            </div>
+          )}
+        </div>
+
+        <nav className="sidebar-nav-list">
+          {navItems.map((i) => (
+            <button
+              key={i.id}
+              className="nav-link"
+              style={{
+                background: tab === i.id ? "#eef6ff" : "#f1f5f9",
+                color: tab === i.id ? "var(--primary)" : "#475569",
+              }}
+              onClick={() => setTab(i.id as any)}
+            >
+              <span style={{ marginRight: 8 }}>{i.icon}</span>
+              {i.label}
+            </button>
+          ))}
+          <button
+            className="nav-link"
+            style={{ marginTop: 8, background: "#f0fdf4", color: "#16a34a" }}
+            onClick={() => navigate("/create-event")}
+          >
+            <span style={{ marginRight: 10 }}>➕</span>Создать мероприятие
+          </button>
+          <button
+            className="nav-link"
+            style={{ marginTop: 16, background: "#fff1f1", color: "#ef4444" }}
+            onClick={onLogout}
+          >
+            <span style={{ marginRight: 8 }}>🚪</span>Выйти
+          </button>
+        </nav>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <main className="dashboard-main-content">
+        {loading ? (
+          <Spinner label="Загружаем данные..." />
+        ) : (
+          <>
+            {/* ═══ TAB: МЕРОПРИЯТИЯ ═══ */}
+            {tab === "events" && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                  <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)" }}>Мои мероприятия</h1>
+                  <button onClick={() => navigate("/create-event")} style={{ padding: "10px 24px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>+ Создать</button>
+                </div>
+                <div style={{ display: "grid", gap: 14 }}>
+                  {events.map((ev) => {
+                    const p = pct(ev.id);
+                    return (
+                      <div
+                        key={ev.id}
+                        onClick={() => { setSelEv(ev.id); setTab("kanban"); }}
+                        style={{
+                          background: "white", borderRadius: 16, padding: "20px 24px",
+                          boxShadow: "0 2px 12px rgba(74,89,138,0.07)",
+                          border: `1.5px solid ${selEv === ev.id ? "var(--primary)" : "var(--border)"}`,
+                          cursor: "pointer", transition: "border-color 0.2s",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <h3 style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>{ev.title}</h3>
+                            {ev.description && <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>{ev.description}</p>}
+                            <div style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--text-muted)", fontWeight: 600, flexWrap: "wrap" }}>
+                              {ev.start_date && <span>📅 {ev.start_date} — {ev.end_date}</span>}
+                              <span style={{ padding: "2px 8px", borderRadius: 100, background: ev.status === "PUBLISHED" ? "#f0fdf4" : "#fffbeb", color: ev.status === "PUBLISHED" ? "#16a34a" : "#92400e", fontWeight: 800 }}>
+                                {ev.status === "PUBLISHED" ? "Опубликовано" : "Черновик"}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "center", minWidth: 70, flexShrink: 0 }}>
+                            <div style={{ fontSize: 28, fontWeight: 900, color: p >= 75 ? "#16a34a" : p >= 40 ? "#d97706" : "var(--primary)" }}>{p}%</div>
+                            <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700 }}>готовность</div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 12, height: 6, background: "var(--bg-light)", borderRadius: 100, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${p}%`, background: p >= 75 ? "#16a34a" : p >= 40 ? "#d97706" : "var(--primary)", borderRadius: 100, transition: "width 0.5s" }} />
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                          Нажмите чтобы открыть канбан →
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {events.length === 0 && <EmptyState icon="📋" title="Нет мероприятий" description="Создайте первое мероприятие." />}
+                </div>
+              </div>
+            )}
+
+            {/* ═══ TAB: КАНБАН ═══ */}
+            {tab === "kanban" && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+                  <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)" }}>📌 Канбан задач</h1>
+                  <select value={selEv} onChange={(e) => setSelEv(e.target.value)} style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", fontWeight: 700, outline: "none", minWidth: 200 }}>
+                    {events.map((ev) => (
+                      <option key={ev.id} value={ev.id}>{ev.title}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {selEvent && (
+                  <div style={{ background: "white", borderRadius: 12, padding: "12px 18px", marginBottom: 16, border: "1.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{selEvent.title}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: pct(selEv) >= 75 ? "#16a34a" : "#d97706" }}>
+                      Готовность: {pct(selEv)}% · Задач: {filtered.length}
+                    </span>
+                  </div>
+                )}
+
+                {/* Добавить задачу */}
+                <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+                  <input type="text" placeholder="Новая задача..." value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()} style={{ flex: 2, minWidth: 180, padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                  <input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                  <button onClick={addTask} style={{ padding: "10px 22px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", whiteSpace: "nowrap" }}>+ Добавить</button>
+                </div>
+
+                {/* Колонки */}
+                <div className="kanban-board">
+                  {(["TODO", "IN_PROGRESS", "DONE"] as TaskStatus[]).map((status) => {
+                    const col = COL_CFG[status];
+                    const colTasks = filtered.filter((t) => t.status === status);
+                    return (
+                      <div key={status} className="kanban-col">
+                        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 14, color: col.color, display: "flex", alignItems: "center", gap: 6 }}>
+                          {col.icon} {col.label}
+                          <span style={{ marginLeft: "auto", background: "white", padding: "2px 8px", borderRadius: 100, fontSize: 11, fontWeight: 900, color: col.color }}>{colTasks.length}</span>
+                        </div>
+                        {colTasks.map((task) => (
+                          <div key={task.id} className="kanban-card">
+                            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, color: "var(--primary-dark)" }}>{task.title}</div>
+                            {task.assigned_to_name && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>👤 {task.assigned_to_name}</div>}
+                            {task.due_date && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>📅 {task.due_date}</div>}
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {status === "TODO" && (
+                                <button onClick={() => moveTask(task.id, "IN_PROGRESS")} style={{ padding: "4px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#d97706" }}>🔧 Взять в работу</button>
+                              )}
+                              {status === "IN_PROGRESS" && (
+                                <>
+                                  <button onClick={() => moveTask(task.id, "DONE")} style={{ padding: "4px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#16a34a" }}>✅ Выполнено</button>
+                                  <button onClick={() => moveTask(task.id, "TODO")} style={{ padding: "4px 10px", background: "#f1f5f9", border: "1px solid var(--border)", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#64748b" }}>← Вернуть</button>
+                                </>
+                              )}
+                              {status === "DONE" && (
+                                <button onClick={() => moveTask(task.id, "IN_PROGRESS")} style={{ padding: "4px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#d97706" }}>🔄 Вернуть в работу</button>
+                              )}
+                              <button onClick={() => delTask(task.id)} style={{ padding: "4px 8px", background: "#fff1f1", border: "1px solid #fecaca", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", color: "#ef4444", marginLeft: "auto" }}>✕</button>
+                            </div>
+                          </div>
+                        ))}
+                        {colTasks.length === 0 && (
+                          <div style={{ textAlign: "center", padding: 24, color: "#ccc", fontSize: 13, fontWeight: 600 }}>
+                            {status === "TODO" ? "Добавьте задачу выше ↑" : "Пусто"}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ═══ TAB: КАЛЕНДАРЬ ═══ */}
+            {tab === "calendar" && (
+              <div>
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>📅 Календарь</h1>
+                <CalendarView events={events} tasks={tasks} />
+              </div>
+            )}
+
+            {/* ═══ TAB: МЕССЕНДЖЕР ═══ */}
+            {tab === "chat" && <ChatView user={user} demoMode={demoMode} />}
+
+            {/* ═══ TAB: НАСТРОЙКИ ═══ */}
+            {tab === "settings" && (
+              <div>
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Настройки профиля</h1>
+                <div style={{ background: "white", borderRadius: 16, padding: 28, maxWidth: 440, boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
+                  {[
+                    { l: "Имя", v: user.full_name },
+                    { l: "Email", v: user.email },
+                    { l: "Роль", v: user.global_role },
+                    ...(user.organization && user.organization !== "CURATOR_DEMO" ? [{ l: "Организация", v: user.organization }] : []),
+                  ].map((f) => (
+                    <div key={f.l} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>{f.l}</div>
+                      <div style={{ padding: "9px 14px", background: "#f8fafc", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>{f.v}</div>
+                    </div>
+                  ))}
+                  {demoMode && <p style={{ color: "#f59e0b", fontSize: 12, fontWeight: 600 }}>⚠️ Demo — изменения не сохраняются</p>}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. PARTICIPANT DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+function ParticipantDashboard({
+  user,
+  onLogout,
+  demoMode,
+}: {
+  user: User;
+  onLogout: () => void;
+  demoMode: boolean;
+}) {
+  const [tab, setTab] = useState<"program" | "schedule" | "chat" | "settings">("program");
+  const [events, setEvents] = useState<EventData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [regs, setRegs] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (demoMode) {
+      setEvents(DEMO_EVENTS.filter((e) => e.status === "PUBLISHED"));
+      setLoading(false);
+    } else {
+      eventsAPI
+        .getAll()
+        .then((res) => setEvents((res.data || []).filter((e: EventData) => e.status === "PUBLISHED")))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+  }, [demoMode]);
+
+  const register = async (id: string) => {
+    if (regs.has(id)) return;
+    if (!demoMode) try { await participantsAPI.registerToEvent(id); } catch {}
+    setRegs((prev) => new Set(prev).add(id));
+  };
+
+  const navItems = [
+    { id: "program", icon: "📋", label: "Программа" },
+    { id: "schedule", icon: "📅", label: "Моё расписание" },
+    { id: "chat", icon: "💬", label: "Чат" },
+    { id: "settings", icon: "⚙️", label: "Настройки" },
+  ];
+
+  return (
+    <div className="dashboard-wrapper">
+      <aside className="dashboard-sidebar">
+        <div style={{ textAlign: "center" }}>
+          <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#16a34a", color: "white", fontSize: 26, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
+            {user.full_name[0]}
+          </div>
+          <h5 style={{ marginTop: 10, marginBottom: 4, fontWeight: 800, fontSize: 15 }}>{user.full_name}</h5>
+          <span style={{ display: "inline-block", padding: "3px 10px", background: "#f0fdf4", color: "#16a34a", borderRadius: 100, fontSize: 11, fontWeight: 800 }}>PARTICIPANT</span>
+          {user.organization && <p style={{ fontSize: 11, color: "#777", marginTop: 5 }}>{user.organization}</p>}
+          {demoMode && <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700, marginTop: 3 }}>DEMO</div>}
+        </div>
+        <nav className="sidebar-nav-list">
+          {navItems.map((i) => (
+            <button key={i.id} className="nav-link" style={{ background: tab === i.id ? "#f0fdf4" : "#f1f5f9", color: tab === i.id ? "#16a34a" : "#475569" }} onClick={() => setTab(i.id as any)}>
+              <span style={{ marginRight: 8 }}>{i.icon}</span>{i.label}
+            </button>
+          ))}
+          <button className="nav-link" style={{ marginTop: 16, background: "#fff1f1", color: "#ef4444" }} onClick={onLogout}>
+            <span style={{ marginRight: 8 }}>🚪</span>Выйти
+          </button>
+        </nav>
+      </aside>
+
+      <main className="dashboard-main-content">
+        {loading ? <Spinner /> : (
+          <>
+            {tab === "program" && (
+              <div>
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Программа мероприятий</h1>
+                <div style={{ display: "grid", gap: 14 }}>
+                  {events.map((ev) => (
+                    <div key={ev.id} style={{ background: "white", borderRadius: 16, padding: "20px 24px", boxShadow: "0 2px 12px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)" }}>
+                      <h3 style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>{ev.title}</h3>
+                      {ev.description && <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>{ev.description}</p>}
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 12 }}>📅 {ev.start_date} — {ev.end_date}</div>
+                      <button onClick={() => register(ev.id)} style={{ padding: "9px 22px", background: regs.has(ev.id) ? "#f0fdf4" : "#16a34a", color: regs.has(ev.id) ? "#16a34a" : "white", border: regs.has(ev.id) ? "1.5px solid #bbf7d0" : "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                        {regs.has(ev.id) ? "✅ Вы зарегистрированы" : "Зарегистрироваться"}
+                      </button>
+                    </div>
+                  ))}
+                  {events.length === 0 && <EmptyState icon="📋" title="Нет мероприятий" description="Скоро здесь появятся новые мероприятия." />}
+                </div>
+              </div>
+            )}
+
+            {tab === "schedule" && (
+              <div>
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Моё расписание</h1>
+                {demoMode ? (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {[
+                      { time: "10:00 – 10:30", title: "Угрозы безопасности 2026", loc: "📍 Зал А · Секция ИнфоБез" },
+                      { time: "10:30 – 11:00", title: "Защита данных в облаке", loc: "📍 Зал А · Секция ИнфоБез" },
+                      { time: "11:00 – 11:30", title: "Нейросети на производстве", loc: "📍 Зал Б · Секция ML" },
+                    ].map((r, i) => (
+                      <div key={i} style={{ background: "white", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)" }}>
+                        <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 4 }}>{r.time}</div>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", marginBottom: 4 }}>{r.title}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.loc}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState icon="📅" title="Расписание пока пусто" description="Зарегистрируйтесь на мероприятие и добавьте доклады." />
+                )}
+              </div>
+            )}
+
+            {tab === "chat" && <ChatView user={user} demoMode={demoMode} />}
+
+            {tab === "settings" && (
+              <div>
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Настройки</h1>
+                <div style={{ background: "white", borderRadius: 16, padding: 28, maxWidth: 440, boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
+                  {[
+                    { l: "Имя", v: user.full_name },
+                    { l: "Email", v: user.email },
+                    { l: "Роль", v: "PARTICIPANT" },
+                    ...(user.organization ? [{ l: "Организация", v: user.organization }] : []),
+                  ].map((f) => (
+                    <div key={f.l} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>{f.l}</div>
+                      <div style={{ padding: "9px 14px", background: "#f8fafc", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>{f.v}</div>
+                    </div>
+                  ))}
+                  {demoMode && <p style={{ color: "#f59e0b", fontSize: 12, fontWeight: 600 }}>⚠️ Demo</p>}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// APP ROOT — роутинг
+// ═══════════════════════════════════════════════════════════════
+function AppContent() {
+  const [user, setUser] = useState<User | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [initLoading, setInitLoading] = useState(true);
+
+  useEffect(() => {
+    injectGlobalCSS();
+    const token = localStorage.getItem("access_token");
+    const du = localStorage.getItem("demo_user");
+
+    if (du) {
+      try {
+        setUser(JSON.parse(du));
+        setDemoMode(true);
+      } catch {}
+      setInitLoading(false);
+      return;
+    }
+
+    if (token) {
+      authAPI
+        .me()
+        .then((res) => setUser(res.data))
+        .catch(() => localStorage.removeItem("access_token"))
+        .finally(() => setInitLoading(false));
+    } else {
+      setInitLoading(false);
+    }
+  }, []);
+
+  const handleLogin = async (email: string, password: string) => {
+    setAuthLoading(true);
+    setAuthError("");
+
+    // Demo
+    const du = DEMO_USERS[email];
+    if (du && du.password === password) {
+      const { password: _, ...userData } = du;
+      setUser(userData);
+      setDemoMode(true);
+      localStorage.setItem("demo_user", JSON.stringify(userData));
+      setAuthLoading(false);
+      return;
+    }
+
+    // Real backend
+    try {
+      const res = await authAPI.login({ email, password });
+      localStorage.setItem("access_token", res.data.access_token);
+      const meRes = await authAPI.me();
+      setUser(meRes.data);
+      setDemoMode(false);
+    } catch (e: any) {
+      setAuthError(e?.response?.data?.detail || "Неверный email или пароль");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async (email: string, password: string, full_name: string) => {
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const res = await authAPI.register({ email, password, full_name });
+      localStorage.setItem("access_token", res.data.access_token);
+      const meRes = await authAPI.me();
+      setUser(meRes.data);
+      setDemoMode(false);
+    } catch (e: any) {
+      setAuthError(e?.response?.data?.detail || "Ошибка регистрации. Проверьте данные.");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleLogout = () => {
-    logout();
+    setUser(null);
+    setDemoMode(false);
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("demo_user");
   };
 
-  const spinnerStyle = `@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+  const isCurator = () => {
+    if (!user) return false;
+    if (demoMode && user.organization === "CURATOR_DEMO") return true;
+    // TODO: при подключении бэка — проверять EventMembership
+    return false;
+  };
 
-  if (loading) return <LoadingScreen />;
+  if (initLoading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          background: "var(--bg-light)",
+        }}
+      >
+        <Spinner label="Загрузка EventHub..." />
+      </div>
+    );
+  }
 
   return (
-    <Router>
-      <style>{spinnerStyle}</style>
-      <div className="app-root">
-        <SiteHeader user={user} onLogout={handleLogout} demoMode={demoMode} />
-        <div className="main-viewport" style={{ minHeight: "80vh", paddingTop: demoMode ? "142px" : "100px" }}>
-          <Routes>
-            <Route path="/" element={<LandingPage demoMode={demoMode} />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/news" element={<NewsPage />} />
-            <Route path="/members" element={<MembersPage />} />
-            <Route path="/contacts" element={<ContactsPage />} />
-            <Route path="/events" element={<EventsPage demoMode={demoMode} />} />
-            <Route path="/events/:id" element={<EventPage user={user} demoMode={demoMode} />} />
-            <Route path="/reports/:id" element={<ReportPage demoMode={demoMode} />} />
-            <Route path="/login" element={
-              user ? <Navigate to="/dashboard" /> : <AuthPage onLogin={handleLogin} />
-            } />
-            <Route path="/dashboard" element={
-              user
-                ? user.global_role === "ORGANIZER"
-                  ? <OrganizerDashboard user={user} setUser={setUser} onLogout={handleLogout} demoMode={demoMode} />
-                  : <ParticipantDashboard user={user} setUser={setUser} onLogout={handleLogout} demoMode={demoMode} />
-                : <Navigate to="/login" />
-            } />
-            <Route path="/manage/events/:id" element={
-              user?.global_role === "ORGANIZER"
-                ? <EventManagePage demoMode={demoMode} />
-                : <Navigate to="/dashboard" />
-            } />
-            <Route path="*" element={<PlaceholderPage title="Страница не найдена" icon="🔍" />} />
-          </Routes>
-        </div>
-        <SiteFooter />
-      </div>
-    </Router>
+    <Routes>
+      {/* FIX #5: лендинг на / */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" /> : <LandingPage />} />
+
+      <Route
+        path="/login"
+        element={
+          user ? <Navigate to="/dashboard" /> : <AuthPage onLogin={handleLogin} onRegister={handleRegister} loading={authLoading} error={authError} />
+        }
+      />
+
+      <Route
+        path="/create-event"
+        element={
+          user?.global_role === "ORGANIZER" ? <CreateEventPage demoMode={demoMode} /> : <Navigate to="/dashboard" />
+        }
+      />
+
+      <Route
+        path="/reports/:id"
+        element={
+          user ? <ReportPage user={user} demoMode={demoMode} /> : <Navigate to="/login" />
+        }
+      />
+
+      <Route
+        path="/dashboard"
+        element={
+          user ? (
+            user.global_role === "ORGANIZER" ? (
+              <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
+            ) : isCurator() ? (
+              <CuratorDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
+            ) : (
+              <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} />
+            )
+          ) : (
+            <Navigate to="/login" />
+          )
+        }
+      />
+
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
