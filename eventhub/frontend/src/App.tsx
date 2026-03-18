@@ -446,27 +446,9 @@ function TopBar({ user, onLogout, variant = "default" }: { user: User | null; on
 // ═══════════════════════════════════════════════════════════════
 // EVENTS LIST PAGE — публичный список мероприятий (/events)
 // ═══════════════════════════════════════════════════════════════
-function EventsListPage({ user, onLogout, demoMode }: { user: User | null; onLogout: () => void; demoMode: boolean }) {
+function EventsListPage({ user, onLogout, demoMode, sharedEvents }: { user: User | null; onLogout: () => void; demoMode: boolean; sharedEvents: EventData[] }) {
   const navigate = useNavigate();
-  const [events, setEvents] = useState<EventData[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (demoMode || !user) {
-      setEvents(DEMO_EVENTS.filter((e) => e.status === "PUBLISHED"));
-      setLoading(false);
-    } else {
-      (async () => {
-        try {
-          const evs = await apiFetch<EventData[]>("GET", "/api/events/");
-          setEvents((evs || []).filter((e: EventData) => e.status === "PUBLISHED"));
-        } catch {
-          setEvents(DEMO_EVENTS.filter((e) => e.status === "PUBLISHED"));
-        }
-        finally { setLoading(false); }
-      })();
-    }
-  }, [demoMode, user]);
+  const events = sharedEvents.filter((e) => e.status === "PUBLISHED");
 
   return (
     <div>
@@ -474,8 +456,7 @@ function EventsListPage({ user, onLogout, demoMode }: { user: User | null; onLog
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px" }}>
         <h1 style={{ fontWeight: 900, fontSize: 26, color: "var(--primary-dark)", marginBottom: 8 }}>Мероприятия</h1>
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 28 }}>Выберите мероприятие для просмотра программы и регистрации</p>
-        {loading ? <Spinner /> : (
-          <div style={{ display: "grid", gap: 16 }}>
+        <div style={{ display: "grid", gap: 16 }}>
             {events.map((ev) => (
               <div
                 key={ev.id}
@@ -506,7 +487,6 @@ function EventsListPage({ user, onLogout, demoMode }: { user: User | null; onLog
             ))}
             {events.length === 0 && <EmptyState icon="📋" title="Нет мероприятий" description="Скоро здесь появятся новые мероприятия." />}
           </div>
-        )}
       </div>
     </div>
   );
@@ -531,43 +511,44 @@ const DEMO_COMMENTS: CommentItem[] = [
   { id: "c4", user_name: "Иван Участников", text: "Интересно услышать про реальные кейсы внедрения ML на производстве.", created_at: "2026-03-18T09:00:00Z", report_id: "r3" },
 ];
 
-function EventDetailPage({ user, onLogout, demoMode }: { user: User | null; onLogout: () => void; demoMode: boolean }) {
+function EventDetailPage({ user, onLogout, demoMode, sharedEvents, sharedRegs, setSharedRegs }: { user: User | null; onLogout: () => void; demoMode: boolean; sharedEvents: EventData[]; sharedRegs: Set<string>; setSharedRegs: React.Dispatch<React.SetStateAction<Set<string>>> }) {
   const navigate = useNavigate();
   const { id: eventId = "" } = useParams<{ id: string }>();
 
   const [event, setEvent] = useState<EventData | null>(null);
   const [sections, setSections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [registered, setRegistered] = useState(false);
+  const registered = sharedRegs.has(eventId);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [commentText, setCommentText] = useState("");
   const [activeReportComments, setActiveReportComments] = useState<string>("");
   const [feedback, setFeedback] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (demoMode || !user) {
-      const ev = DEMO_EVENTS.find((e) => e.id === eventId);
-      setEvent(ev || null);
-      setSections(DEMO_SECTIONS_PROGRAM[eventId] || []);
-      setComments([...DEMO_COMMENTS]);
-      setLoading(false);
+    const ev = sharedEvents.find((e) => e.id === eventId);
+    if (ev) {
+      setEvent(ev);
+      if (demoMode || !user) {
+        setSections(DEMO_SECTIONS_PROGRAM[eventId] || []);
+        setComments([...DEMO_COMMENTS]);
+        setLoading(false);
+      } else {
+        (async () => {
+          try {
+            const prog = await apiFetch<any>("GET", `/api/events/${eventId}/program`);
+            setSections(prog.sections || []);
+          } catch {
+            setSections(DEMO_SECTIONS_PROGRAM[eventId] || []);
+            setComments([...DEMO_COMMENTS]);
+          }
+          finally { setLoading(false); }
+        })();
+      }
     } else {
-      (async () => {
-        try {
-          const ev = await apiFetch<EventData>("GET", `/api/events/${eventId}`);
-          setEvent(ev);
-          const prog = await apiFetch<any>("GET", `/api/events/${eventId}/program`);
-          setSections(prog.sections || []);
-        } catch {
-          const ev = DEMO_EVENTS.find((e) => e.id === eventId);
-          setEvent(ev || null);
-          setSections(DEMO_SECTIONS_PROGRAM[eventId] || []);
-          setComments([...DEMO_COMMENTS]);
-        }
-        finally { setLoading(false); }
-      })();
+      setEvent(null);
+      setLoading(false);
     }
-  }, [eventId, demoMode, user]);
+  }, [eventId, demoMode, user, sharedEvents]);
 
   const handleRegister = async () => {
     if (registered) return;
@@ -575,7 +556,7 @@ function EventDetailPage({ user, onLogout, demoMode }: { user: User | null; onLo
     if (!demoMode) {
       try { await apiFetch("POST", `/api/events/${eventId}/register`); } catch {}
     }
-    setRegistered(true);
+    setSharedRegs((prev) => new Set(prev).add(eventId));
   };
 
   const addComment = async (reportId: string) => {
@@ -2017,16 +1998,21 @@ function OrganizerDashboard({
   demoMode,
   memberships,
   setMemberships,
+  sharedEvents,
+  setSharedEvents,
 }: {
   user: User;
   onLogout: () => void;
   demoMode: boolean;
   memberships: DemoMembership[];
   setMemberships: React.Dispatch<React.SetStateAction<DemoMembership[]>>;
+  sharedEvents: EventData[];
+  setSharedEvents: React.Dispatch<React.SetStateAction<EventData[]>>;
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"events" | "kanban" | "calendar" | "chat" | "settings">("events");
-  const [events, setEvents] = useState<EventData[]>([]);
+  const events = sharedEvents;
+  const setEvents = setSharedEvents;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [selEv, setSelEv] = useState("");
@@ -2071,9 +2057,8 @@ function OrganizerDashboard({
   useEffect(() => {
     setLoading(true);
     if (demoMode) {
-      setEvents(DEMO_EVENTS);
-      setTasks([...DEMO_TASKS]); // копия чтобы мутировать
-      setSelEv(DEMO_EVENTS[0]?.id || "");
+      setTasks([...DEMO_TASKS]);
+      setSelEv(events[0]?.id || "");
       setLoading(false);
       return;
     }
@@ -2316,8 +2301,14 @@ function OrganizerDashboard({
                         <div style={{ marginTop: 12, height: 6, background: "var(--bg-light)", borderRadius: 100, overflow: "hidden" }}>
                           <div style={{ height: "100%", width: `${p}%`, background: p >= 75 ? "#16a34a" : p >= 40 ? "#d97706" : "var(--primary)", borderRadius: 100, transition: "width 0.5s" }} />
                         </div>
-                        <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
-                          Нажмите чтобы открыть канбан →
+                        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Нажмите чтобы открыть канбан →</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/manage/events/${ev.id}`); }}
+                            style={{ padding: "5px 14px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                          >
+                            ⚙️ Управление
+                          </button>
                         </div>
                       </div>
                     );
@@ -2454,19 +2445,23 @@ function ParticipantDashboard({
   demoMode,
   memberships,
   setMemberships,
+  sharedEvents,
+  sharedRegs,
+  setSharedRegs,
 }: {
   user: User;
   onLogout: () => void;
   demoMode: boolean;
   memberships: DemoMembership[];
   setMemberships: React.Dispatch<React.SetStateAction<DemoMembership[]>>;
+  sharedEvents: EventData[];
+  sharedRegs: Set<string>;
+  setSharedRegs: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"program" | "sections" | "kanban" | "schedule" | "chat" | "settings">("program");
-  const [events, setEvents] = useState<EventData[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [regs, setRegs] = useState<Set<string>>(new Set());
   const [selEv, setSelEv] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newDue, setNewDue] = useState("");
@@ -2480,42 +2475,42 @@ function ParticipantDashboard({
   // Мероприятия где пользователь куратор
   const curatorEventIds = memberships.filter((m) => m.user_id === user.id && m.context_role === "CURATOR").map((m) => m.event_id);
 
+  // Events: куратор видит свои + опубликованные, остальные — только опубликованные
+  const events = isCurator
+    ? sharedEvents.filter((e) => curatorEventIds.includes(e.id) || e.status === "PUBLISHED")
+    : sharedEvents.filter((e) => e.status === "PUBLISHED");
+
+  // Regs from shared state
+  const regs = sharedRegs;
+
   useEffect(() => {
     setLoading(true);
     if (demoMode) {
-      // Куратор видит мероприятия где он куратор + все опубликованные
-      const allEvs = isCurator
-        ? DEMO_EVENTS.filter((e) => curatorEventIds.includes(e.id) || e.status === "PUBLISHED")
-        : DEMO_EVENTS.filter((e) => e.status === "PUBLISHED");
-      setEvents(allEvs);
-      // Задачи: куратор видит ВСЕ задачи своих мероприятий, спикер/участник — только свои
       const myTasks = isCurator
         ? DEMO_TASKS.filter((t) => curatorEventIds.includes(t.event_id))
         : DEMO_TASKS.filter((t) => t.assigned_to === user.id);
       setTasks([...myTasks]);
-      if (allEvs.length) setSelEv(allEvs[0].id);
+      if (events.length) setSelEv(events[0].id);
       setLoading(false);
     } else {
       (async () => {
         try {
-          const evs = await apiFetch<EventData[]>("GET", "/api/events/");
-          setEvents((evs || []).filter((e: EventData) => e.status === "PUBLISHED"));
           const all: Task[] = [];
-          for (const ev of (evs || [])) {
+          for (const ev of events) {
             try { const ts = await apiFetch<Task[]>("GET", `/api/tasks/?event_id=${ev.id}`); all.push(...(ts || [])); } catch {}
           }
           setTasks(isCurator ? all : all.filter((t) => t.assigned_to === user.id));
-          if (evs?.length) setSelEv(evs[0].id);
+          if (events.length) setSelEv(events[0].id);
         } catch {}
         finally { setLoading(false); }
       })();
     }
-  }, [demoMode]);
+  }, [demoMode, memberships]);
 
   const register = async (id: string) => {
     if (regs.has(id)) return;
     if (!demoMode) try { await apiFetch("POST", `/api/events/${id}/register`); } catch {}
-    setRegs((prev) => new Set(prev).add(id));
+    setSharedRegs((prev) => new Set(prev).add(id));
   };
 
   const filtered = useMemo(() => tasks.filter((t) => t.event_id === selEv), [tasks, selEv]);
@@ -3115,6 +3110,10 @@ function AppContent() {
   const [authError, setAuthError] = useState("");
   const [initLoading, setInitLoading] = useState(true);
   const [memberships, setMemberships] = useState<DemoMembership[]>([...DEMO_MEMBERSHIPS_INIT]);
+  // Shared events state — publishes persist across dashboards
+  const [sharedEvents, setSharedEvents] = useState<EventData[]>([...DEMO_EVENTS]);
+  // Shared registrations — persist across navigation
+  const [sharedRegs, setSharedRegs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     injectGlobalCSS();
@@ -3214,10 +3213,10 @@ function AppContent() {
       <Route path="/" element={<LandingPage user={user} onLogout={handleLogout} />} />
 
       {/* Публичный список мероприятий */}
-      <Route path="/events" element={<EventsListPage user={user} onLogout={handleLogout} demoMode={demoMode} />} />
+      <Route path="/events" element={<EventsListPage user={user} onLogout={handleLogout} demoMode={demoMode} sharedEvents={sharedEvents} />} />
 
       {/* Страница мероприятия — секции, доклады, комментарии, регистрация */}
-      <Route path="/events/:id" element={<EventDetailPage user={user} onLogout={handleLogout} demoMode={demoMode} />} />
+      <Route path="/events/:id" element={<EventDetailPage user={user} onLogout={handleLogout} demoMode={demoMode} sharedEvents={sharedEvents} sharedRegs={sharedRegs} setSharedRegs={setSharedRegs} />} />
 
       <Route
         path="/login"
@@ -3252,9 +3251,9 @@ function AppContent() {
         element={
           user ? (
             user.global_role === "ORGANIZER" ? (
-              <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} />
+              <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} sharedEvents={sharedEvents} setSharedEvents={setSharedEvents} />
             ) : (
-              <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} />
+              <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} sharedEvents={sharedEvents} sharedRegs={sharedRegs} setSharedRegs={setSharedRegs} />
             )
           ) : (
             <Navigate to="/login" />
