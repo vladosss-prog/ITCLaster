@@ -31,6 +31,7 @@ import {
 import { CuratorDashboard } from "./components/dashboard/CuratorDashboard";
 import { CreateEventPage } from "./pages/CreateEventPage";
 import { ReportPage } from "./pages/ReportPage";
+import { EventManagePage } from "./pages/EventManagePage";
 
 // ═══════════════════════════════════════════════════════════════
 // DIRECT FETCH HELPERS — вызовы к реальному бэкенду
@@ -2197,6 +2198,13 @@ function AppContent() {
         path="/reports/:id"
         element={
           user ? <ReportPage user={user} demoMode={demoMode} /> : <Navigate to="/login" />
+        }
+      />
+
+      <Route
+        path="/manage/events/:id"
+        element={
+          user ? <EventManagePage demoMode={demoMode} /> : <Navigate to="/login" />
         }
       />
 

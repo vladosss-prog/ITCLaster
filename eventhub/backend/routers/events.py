@@ -166,6 +166,27 @@ def _escape_like(value: str) -> str:
     return re.sub(r"([%_])", r"\\\1", value)
 
 
+def _auto_add_to_event_chat(event_id: str, user_id: str, msg_text: str, db: Session) -> None:
+    """B-8: при назначении куратора/спикера — автоматически добавлять в чат мероприятия."""
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    chat_room = db.execute(
+        select(ChatRoom).where(ChatRoom.event_id == event_id, ChatRoom.type == "GROUP")
+    ).scalar_one_or_none()
+
+    if chat_room:
+        system_msg = ChatMessage(
+            id=str(uuid4()),
+            room_id=chat_room.id,
+            user_id=user_id,
+            text=msg_text,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(system_msg)
+        db.commit()
+
+
 # ---------- Events ----------
 
 
@@ -268,7 +289,7 @@ def get_event(
         EventMembership.user_id == current_user.id,
         EventMembership.event_id == event_id,
     )
-    has_membership = db.execute(membership_stmt).scalar_one_or_none() is not None
+    has_membership = db.execute(membership_stmt).first() is not None
     if event.owner_id != current_user.id and not has_membership:
         raise HTTPException(status_code=403, detail="Нет доступа к мероприятию")
 
@@ -390,7 +411,74 @@ def assign_curator(
     db.add(membership)
     db.commit()
     db.refresh(membership)
+
+    # B-8: автоматически добавляем куратора в чат мероприятия
+    _auto_add_to_event_chat(event_id, body.user_id, "Пользователь назначен куратором секции", db)
+
     return MembershipOut.model_validate(membership, from_attributes=True)
+
+
+@router.get("/{event_id}/curators", response_model=List[MembershipOut])
+def list_curators(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[MembershipOut]:
+    """Список кураторов мероприятия."""
+    stmt = select(EventMembership).where(
+        EventMembership.event_id == event_id,
+        EventMembership.context_role == "CURATOR",
+    )
+    return [MembershipOut.model_validate(m, from_attributes=True) for m in db.execute(stmt).scalars().all()]
+
+
+@router.get("/{event_id}/speakers", response_model=List[MembershipOut])
+def list_speakers(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[MembershipOut]:
+    """Список спикеров мероприятия."""
+    stmt = select(EventMembership).where(
+        EventMembership.event_id == event_id,
+        EventMembership.context_role == "SPEAKER",
+    )
+    return [MembershipOut.model_validate(m, from_attributes=True) for m in db.execute(stmt).scalars().all()]
+
+
+@router.delete("/{event_id}/curators/{user_id}", status_code=204)
+def remove_curator(
+    event_id: str,
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Снять куратора с мероприятия (только владелец)."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец может снимать кураторов")
+
+    stmt = select(EventMembership).where(
+        EventMembership.user_id == user_id,
+        EventMembership.event_id == event_id,
+        EventMembership.context_role == "CURATOR",
+    )
+    membership = db.execute(stmt).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Куратор не найден")
+
+    # Сброс curator_id у секции
+    if membership.section_id:
+        section = db.get(Section, membership.section_id)
+        if section and section.curator_id == user_id:
+            section.curator_id = None
+            db.add(section)
+
+    db.delete(membership)
+    db.commit()
+    return None
 
 
 @sections_router.post("/{section_id}/reports", response_model=ReportOut)
@@ -493,6 +581,10 @@ def assign_speaker(
     db.add(membership)
     db.commit()
     db.refresh(report)
+
+    # B-8: автоматически добавляем спикера в чат мероприятия
+    _auto_add_to_event_chat(event.id, body.user_id, "Пользователь назначен спикером доклада", db)
+
     return ReportOut.model_validate(report, from_attributes=True)
 
 

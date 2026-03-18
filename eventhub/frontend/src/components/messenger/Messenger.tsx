@@ -27,14 +27,22 @@ function formatTime(iso: string) {
 }
 
 function roomTitle(room: ChatRoom): ChatRoomWithUi {
+  // B-7: бэкенд теперь возвращает display_name
+  if (room.display_name) {
+    return {
+      ...room,
+      title: room.display_name,
+      subtitle: room.type === "GROUP" ? "Групповой чат" : "Личный чат",
+    };
+  }
   if (room.type === "GROUP") {
     return {
       ...room,
-      title: room.event_id ? `Чат мероприятия ${room.event_id}` : "Чат мероприятия",
+      title: room.event_id ? `Чат мероприятия` : "Групповой чат",
       subtitle: "Групповой чат",
     };
   }
-  return { ...room, title: `Личный чат ${room.id.slice(0, 6)}`, subtitle: "Direct" };
+  return { ...room, title: `Личный чат`, subtitle: "Direct" };
 }
 
 export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?: string }) {
@@ -109,25 +117,7 @@ export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?
       .getMy()
       .then(async (res) => {
         const rawRooms = res.data || [];
-        // Подгружаем имена мероприятий для GROUP-чатов
-        const eventIds = [...new Set(rawRooms.filter(r => r.type === "GROUP" && r.event_id).map(r => r.event_id!))];
-        let names: Record<string, string> = {};
-        if (eventIds.length > 0) {
-          try {
-            const evRes = await eventsAPI.getAll();
-            for (const ev of (evRes.data || [])) {
-              names[ev.id] = ev.title;
-            }
-          } catch { /* ignore */ }
-        }
-        setEventNames(names);
-        const list = rawRooms.map(room => {
-          if (room.type === "GROUP") {
-            const eventName = room.event_id ? names[room.event_id] : null;
-            return { ...room, title: eventName || (room.event_id ? `Чат мероприятия` : "Групповой чат"), subtitle: "Групповой чат" };
-          }
-          return { ...room, title: `Личный чат ${room.id.slice(0, 6)}`, subtitle: "Direct" };
-        });
+        const list = rawRooms.map(room => roomTitle(room));
         setRooms(list);
         setActiveRoomId((prev) => prev || list[0]?.id || "");
       })
@@ -289,7 +279,7 @@ export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?
           )}
 
           {loadingRooms ? (
-            <Spinner size={28} label="Загрузка чатов..." />
+            <Spinner  label="Загрузка чатов..." />
           ) : roomsError ? (
             <div style={{ padding: 12 }}>
               <ErrorBlock message={roomsError} onRetry={loadRooms} />

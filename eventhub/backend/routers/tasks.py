@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from jose import JWTError
+from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -207,6 +208,49 @@ def delete_task(
     db.delete(task)
     db.commit()
     return None
+
+
+class TaskAssignIn(BaseModel):
+    assigned_to: str
+
+
+@router.patch("/tasks/{task_id}/assign", response_model=TaskOut)
+def assign_task(
+    task_id: str,
+    body: TaskAssignIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TaskOut:
+    """Назначить ответственного на задачу (владелец мероприятия или куратор)."""
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    event = db.get(Event, task.event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    is_owner = event.owner_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership.id).where(
+            EventMembership.event_id == task.event_id,
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).first() is not None
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Нет прав для назначения ответственного")
+
+    target = db.get(User, body.assigned_to)
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    task.assigned_to = body.assigned_to
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return TaskOut.model_validate(task, from_attributes=True)
 
 
 @router.get("/events/{event_id}/progress", response_model=ProgressOut)

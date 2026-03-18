@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { eventsAPI, tasksAPI } from "../api/apiClient.ts";
-import type { Task, TaskStatus, EventData as EventItem, EventStatus } from "../api/apiClient.ts";
+import { eventsAPI, tasksAPI, usersAPI, reportsAPI, participantsAPI } from "../api/apiClient.ts";
+import type { Task, TaskStatus, EventData as EventItem, EventStatus, Section, User, Report } from "../api/apiClient.ts";
 // -----------------------------------------------------------
 // ТИПЫ
 // -----------------------------------------------------------
@@ -341,16 +341,305 @@ const EditEventModal = ({
 };
 
 // -----------------------------------------------------------
-// КАНБАН МЕРОПРИЯТИЯ
+// F-9: МОДАЛКА НАЗНАЧЕНИЯ ОТВЕТСТВЕННОГО
+// -----------------------------------------------------------
+const AssignUserModal = ({
+  title: modalTitle,
+  onClose,
+  onAssign,
+}: {
+  title: string;
+  onClose: () => void;
+  onAssign: (userId: string) => void;
+}) => {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<User[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const handleSearch = async (q: string) => {
+    setQuery(q);
+    if (q.length < 2) { setResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await usersAPI.search(q);
+      setResults(res.data || []);
+    } catch { setResults([]); }
+    finally { setSearching(false); }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)",
+      backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+      justifyContent: "center", zIndex: 3000,
+    }}>
+      <div style={{
+        background: "white", borderRadius: 20, padding: 28, width: "100%",
+        maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+        borderTop: "5px solid var(--primary)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 style={{ fontWeight: 900, margin: 0, color: "var(--primary-dark)", fontSize: 16 }}>{modalTitle}</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#777" }}>×</button>
+        </div>
+        <input
+          type="text"
+          placeholder="Поиск по ФИО..."
+          value={query}
+          onChange={e => handleSearch(e.target.value)}
+          autoFocus
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 14, boxSizing: "border-box", fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 12 }}
+        />
+        {searching && <div style={{ color: "#777", fontSize: 13, textAlign: "center", padding: 8 }}>Поиск...</div>}
+        {results.length > 0 && (
+          <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+            {results.map(u => (
+              <div key={u.id} onClick={() => { onAssign(u.id); onClose(); }}
+                style={{ padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, transition: "background 0.15s" }}
+                onMouseOver={e => (e.currentTarget.style.background = "#f0f7ff")}
+                onMouseOut={e => (e.currentTarget.style.background = "white")}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--primary)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14, flexShrink: 0 }}>
+                  {u.full_name[0]}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "var(--primary-dark)" }}>{u.full_name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {query.length >= 2 && results.length === 0 && !searching && (
+          <div style={{ color: "#aaa", textAlign: "center", padding: 16, fontSize: 13 }}>Никого не найдено</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------
+// F-7: ТАБ "СЕКЦИИ И КУРАТОРЫ"
+// -----------------------------------------------------------
+const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean }) => {
+  const [sections, setSections] = useState<Section[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [assignSection, setAssignSection] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (demoMode) { setLoading(false); return; }
+    eventsAPI.getSections(eventId)
+      .then(res => setSections(res.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [eventId, demoMode]);
+
+  const handleAssignCurator = async (userId: string) => {
+    if (!assignSection) return;
+    try {
+      await eventsAPI.assignCurator(eventId, { user_id: userId, section_id: assignSection });
+      const res = await eventsAPI.getSections(eventId);
+      setSections(res.data || []);
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Не удалось назначить куратора");
+    }
+    setAssignSection(null);
+  };
+
+  const handleRemoveCurator = async (sectionId: string, curatorId: string) => {
+    try {
+      await eventsAPI.removeCurator(eventId, curatorId);
+      const res = await eventsAPI.getSections(eventId);
+      setSections(res.data || []);
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Не удалось снять куратора");
+    }
+  };
+
+  if (loading) return <div style={{ textAlign: "center", padding: 40, color: "#999" }}>Загрузка секций...</div>;
+
+  if (sections.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>📂</div>
+        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>Нет секций</div>
+        <div style={{ fontSize: 14 }}>Создайте секции для мероприятия через API или панель управления.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "grid", gap: 14 }}>
+        {sections.map(s => (
+          <div key={s.id} style={{
+            background: "white", borderRadius: 14, padding: "18px 22px",
+            boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", marginBottom: 6 }}>{s.title}</div>
+                {s.section_start && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>
+                    🕐 {new Date(s.section_start).toLocaleString("ru-RU")}
+                    {s.section_end && ` — ${new Date(s.section_end).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`}
+                  </div>
+                )}
+                {s.location && <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>📍 {s.location}</div>}
+                {s.format && <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>📋 {s.format}</div>}
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Куратор</div>
+                {s.curator_id ? (
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)" }}>
+                      {s.curator_name || s.curator_id.slice(0, 8)}
+                    </span>
+                    {!demoMode && (
+                      <button onClick={() => handleRemoveCurator(s.id, s.curator_id!)} style={{
+                        marginLeft: 8, padding: "2px 8px", background: "#fff1f1", color: "#ef4444",
+                        border: "1px solid #fecaca", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer",
+                      }}>✕</button>
+                    )}
+                  </div>
+                ) : (
+                  <button onClick={() => setAssignSection(s.id)} style={{
+                    padding: "6px 14px", background: "var(--primary)", color: "white",
+                    border: "none", borderRadius: 100, fontSize: 12, fontWeight: 800, cursor: "pointer",
+                    fontFamily: "Nunito, sans-serif",
+                  }}>Назначить</button>
+                )}
+              </div>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ height: 4, background: "#e2e8f0", borderRadius: 100, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${s.readiness_percent}%`, background: s.readiness_percent >= 75 ? "#16a34a" : "var(--primary)", borderRadius: 100 }} />
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, marginTop: 2 }}>Готовность: {s.readiness_percent}%</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {assignSection && (
+        <AssignUserModal title="Назначить куратора" onClose={() => setAssignSection(null)} onAssign={handleAssignCurator} />
+      )}
+    </div>
+  );
+};
+
+// -----------------------------------------------------------
+// F-8: ТАБ "СПИКЕРЫ"
+// -----------------------------------------------------------
+const SpeakersTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean }) => {
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [assignReport, setAssignReport] = useState<string | null>(null);
+
+  const loadProgram = async () => {
+    try {
+      const res = await participantsAPI.getProgram(eventId);
+      const program = res.data;
+      const allReports: any[] = [];
+      for (const section of (program?.sections || [])) {
+        for (const report of (section.reports || [])) {
+          allReports.push({ ...report, section_title: section.title });
+        }
+      }
+      setReports(allReports);
+    } catch {}
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    if (demoMode) { setLoading(false); return; }
+    loadProgram();
+  }, [eventId, demoMode]);
+
+  const handleAssignSpeaker = async (userId: string) => {
+    if (!assignReport) return;
+    try {
+      await reportsAPI.assignSpeaker(assignReport, { speaker_id: userId });
+      await loadProgram();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Не удалось назначить спикера");
+    }
+    setAssignReport(null);
+  };
+
+  if (loading) return <div style={{ textAlign: "center", padding: 40, color: "#999" }}>Загрузка докладов...</div>;
+
+  if (reports.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🎤</div>
+        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>Нет докладов</div>
+        <div style={{ fontSize: 14 }}>Создайте доклады в секциях мероприятия.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "grid", gap: 12 }}>
+        {reports.map((r: any) => (
+          <div key={r.id} style={{
+            background: "white", borderRadius: 14, padding: "16px 20px",
+            boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)",
+            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)", marginBottom: 4 }}>{r.title}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>📂 {r.section_title}</div>
+              {r.start_time && (
+                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
+                  🕐 {new Date(r.start_time).toLocaleString("ru-RU")}
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              {r.speaker_id ? (
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)" }}>
+                    🎤 {r.speaker_name || r.speaker_id.slice(0, 8)}
+                  </span>
+                  <span style={{
+                    marginLeft: 8, display: "inline-block", padding: "2px 8px", borderRadius: 100,
+                    fontSize: 10, fontWeight: 800,
+                    background: r.speaker_confirmed ? "#f0fdf4" : "#fffbeb",
+                    color: r.speaker_confirmed ? "#16a34a" : "#d97706",
+                  }}>
+                    {r.speaker_confirmed ? "✅" : "⏳"}
+                  </span>
+                </div>
+              ) : (
+                <button onClick={() => setAssignReport(r.id)} style={{
+                  padding: "6px 14px", background: "var(--primary)", color: "white",
+                  border: "none", borderRadius: 100, fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  fontFamily: "Nunito, sans-serif",
+                }}>Назначить спикера</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {assignReport && (
+        <AssignUserModal title="Назначить спикера" onClose={() => setAssignReport(null)} onAssign={handleAssignSpeaker} />
+      )}
+    </div>
+  );
+};
+
+// -----------------------------------------------------------
+// КАНБАН МЕРОПРИЯТИЯ (обновлён: F-9 — кнопка назначить ответственного)
 // -----------------------------------------------------------
 const EventKanban = ({
-  tasks, onUpdateStatus, onDeleteTask, onAddTask, demoMode,
+  tasks, onUpdateStatus, onDeleteTask, onAddTask, demoMode, onAssignTask,
 }: {
   tasks: Task[];
   onUpdateStatus: (id: string, status: TaskStatus) => void;
   onDeleteTask: (id: string) => void;
   onAddTask: () => void;
   demoMode: boolean;
+  onAssignTask?: (taskId: string) => void;
 }) => {
   const columns: { id: TaskStatus; label: string; color: string; bg: string }[] = [
     { id: "TODO", label: "Нужно сделать", color: "#94a3b8", bg: "#f8fafc" },
@@ -442,10 +731,22 @@ const EventKanban = ({
                   </div>
 
                   {task.due_date && (
-                    <div style={{ fontSize: 12, color: "#777", marginBottom: 10, fontWeight: 600 }}>
+                    <div style={{ fontSize: 12, color: "#777", marginBottom: 6, fontWeight: 600 }}>
                       📅 Дедлайн: {task.due_date}
                     </div>
                   )}
+
+                  {/* F-9: Ответственный */}
+                  <div style={{ fontSize: 12, color: "#777", marginBottom: 8, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                    👤 {task.assigned_to_name || (task.assigned_to ? task.assigned_to.slice(0, 8) : "Не назначен")}
+                    {onAssignTask && (
+                      <button onClick={() => onAssignTask(task.id)} style={{
+                        marginLeft: "auto", padding: "2px 8px", background: "#e8f0fe", color: "var(--primary)",
+                        border: "1px solid #bfdbfe", borderRadius: 100, fontSize: 10, fontWeight: 800, cursor: "pointer",
+                        fontFamily: "Nunito, sans-serif",
+                      }}>Назначить</button>
+                    )}
+                  </div>
 
                   {/* Смена статуса */}
                   <select
@@ -497,11 +798,12 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [activeTab, setActiveTab] = useState<"kanban" | "info">("kanban");
+  const [activeTab, setActiveTab] = useState<"kanban" | "info" | "sections" | "speakers">("kanban");
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showEditEvent, setShowEditEvent] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [assignTaskId, setAssignTaskId] = useState<string | null>(null);
 
   // Загрузка мероприятия и задач
   useEffect(() => {
@@ -562,6 +864,27 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
   // Добавление задачи
   const handleTaskCreated = (task: Task) => {
     setTasks(prev => [...prev, task]);
+  };
+
+  // F-9: Назначение ответственного на задачу
+  const handleAssignTask = async (userId: string) => {
+    if (!assignTaskId) return;
+    if (demoMode) {
+      setTasks(prev => prev.map(t => t.id === assignTaskId ? { ...t, assigned_to: userId, assigned_to_name: "Назначен" } : t));
+      setAssignTaskId(null);
+      return;
+    }
+    try {
+      await tasksAPI.assign(assignTaskId, userId);
+      // Reload tasks
+      if (id) {
+        const res = await tasksAPI.getByEvent(id);
+        setTasks(res.data || []);
+      }
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Не удалось назначить ответственного");
+    }
+    setAssignTaskId(null);
   };
 
   // Удаление мероприятия
@@ -728,6 +1051,8 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
       }}>
         {[
           { id: "kanban", label: "📋 Канбан задач" },
+          { id: "sections", label: "📂 Секции и кураторы" },
+          { id: "speakers", label: "🎤 Спикеры" },
           { id: "info", label: "ℹ️ Информация" },
         ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
@@ -751,7 +1076,18 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
           onDeleteTask={handleDeleteTask}
           onAddTask={() => setShowCreateTask(true)}
           demoMode={demoMode}
+          onAssignTask={!demoMode ? (taskId: string) => setAssignTaskId(taskId) : undefined}
         />
+      )}
+
+      {/* СЕКЦИИ И КУРАТОРЫ */}
+      {activeTab === "sections" && (
+        <SectionsTab eventId={id!} demoMode={demoMode} />
+      )}
+
+      {/* СПИКЕРЫ */}
+      {activeTab === "speakers" && (
+        <SpeakersTab eventId={id!} demoMode={demoMode} />
       )}
 
       {/* ИНФОРМАЦИЯ */}
@@ -849,6 +1185,15 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
             setShowEditEvent(false);
           }}
           demoMode={demoMode}
+        />
+      )}
+
+      {/* F-9: Модалка назначения ответственного на задачу */}
+      {assignTaskId && (
+        <AssignUserModal
+          title="Назначить ответственного"
+          onClose={() => setAssignTaskId(null)}
+          onAssign={handleAssignTask}
         />
       )}
     </div>

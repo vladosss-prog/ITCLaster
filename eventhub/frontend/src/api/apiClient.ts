@@ -127,6 +127,7 @@ export interface ChatRoom {
   id: string;
   event_id?: string | null;
   type: "GROUP" | "DIRECT";
+  display_name?: string;
 }
 
 export interface ChatMessage {
@@ -212,6 +213,9 @@ export const authAPI = {
     api.post<{ access_token: string; token_type: string }>("/api/auth/login", data),
 
   me: () => api.get<User>("/api/auth/me"),
+
+  updateProfile: (data: Partial<User>) =>
+    api.patch<User>("/api/auth/me", data),
 };
 
 // -----------------------------------------------------------
@@ -226,15 +230,23 @@ export const eventsAPI = {
   getAll: () =>
     api.get<Event[]>("/api/events/"),
 
+  // GET /api/events/public
+  getPublic: (skip = 0, limit = 20) =>
+    api.get<Event[]>("/api/events/public", { params: { skip, limit } }),
+
   // GET /api/events/{id}
   getOne: (id: string) =>
     api.get<Event>(`/api/events/${id}`),
 
-  // PATCH /api/events/{id}  — FIX: был update но метода не было
+  // GET /api/events/{id}/public
+  getOnePublic: (id: string) =>
+    api.get<Event>(`/api/events/${id}/public`),
+
+  // PATCH /api/events/{id}
   update: (id: string, data: Partial<Event>) =>
     api.patch<Event>(`/api/events/${id}`, data),
 
-  // DELETE /api/events/{id}  — FIX: метода не было
+  // DELETE /api/events/{id}
   delete: (id: string) =>
     api.delete(`/api/events/${id}`),
 
@@ -247,8 +259,20 @@ export const eventsAPI = {
     api.get<Section[]>(`/api/events/${eventId}/sections`),
 
   // POST /api/events/{id}/curators
-  assignCurator: (eventId: string, data: { user_id: string; section_id: string }) =>
+  assignCurator: (eventId: string, data: { user_id: string; section_id?: string }) =>
     api.post(`/api/events/${eventId}/curators`, data),
+
+  // GET /api/events/{id}/curators
+  getCurators: (eventId: string) =>
+    api.get(`/api/events/${eventId}/curators`),
+
+  // GET /api/events/{id}/speakers
+  getSpeakers: (eventId: string) =>
+    api.get(`/api/events/${eventId}/speakers`),
+
+  // DELETE /api/events/{id}/curators/{userId}
+  removeCurator: (eventId: string, userId: string) =>
+    api.delete(`/api/events/${eventId}/curators/${userId}`),
 
   // GET /api/events/{id}/progress
   getProgress: (eventId: string) =>
@@ -329,6 +353,9 @@ export const tasksAPI = {
 
   updateStatus: (id: string, status: TaskStatus) =>
     api.patch<Task>(`/api/tasks/${id}/status`, { status }),
+
+  assign: (taskId: string, userId: string) =>
+    api.patch<Task>(`/api/tasks/${taskId}/assign`, { assigned_to: userId }),
 
   delete: (id: string) =>
     api.delete(`/api/tasks/${id}`),
