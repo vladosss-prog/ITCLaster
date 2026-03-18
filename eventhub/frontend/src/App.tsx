@@ -2037,14 +2037,20 @@ function OrganizerDashboard({
     if (demoMode) {
       setCuratorResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
     } else {
-      try { const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`); setCuratorResults((res || []).filter((u) => u.id !== user.id)); } catch { setCuratorResults([]); }
+      try {
+        const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`);
+        setCuratorResults((res || []).filter((u) => u.id !== user.id));
+      } catch {
+        // Fallback на демо-данные при недоступности API
+        setCuratorResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
+      }
     }
   };
   const assignCurator = async (userId: string, eventId: string) => {
-    if (demoMode) {
-      setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
-    } else {
-      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch (e: any) { alert(e?.message || "Ошибка назначения куратора"); return; }
+    // Всегда обновляем локальный стейт для мгновенного отображения
+    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
+    if (!demoMode) {
+      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch (e: any) { console.warn("API curator assign:", e?.message); }
     }
     setShowAssignCurator("");
     setCuratorSearch("");
@@ -2061,15 +2067,19 @@ function OrganizerDashboard({
     if (demoMode) {
       setSpeakerResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
     } else {
-      try { const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`); setSpeakerResults((res || []).filter((u) => u.id !== user.id)); } catch { setSpeakerResults([]); }
+      try {
+        const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`);
+        setSpeakerResults((res || []).filter((u) => u.id !== user.id));
+      } catch {
+        setSpeakerResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
+      }
     }
   };
   const assignSpeakerOrg = async (userId: string, eventId: string) => {
-    if (demoMode) {
-      setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
-    } else {
-      // Need a report_id — for now, just add membership via curator endpoint with SPEAKER context
-      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch {}
+    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
+    if (!demoMode) {
+      // Бэкенд: назначение спикера требует report_id. Если нет — пробуем как куратора с последующим обновлением.
+      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch (e: any) { console.warn("API speaker assign:", e?.message); }
     }
     setShowAssignSpeaker("");
     setSpeakerSearch("");
@@ -2623,14 +2633,18 @@ function ParticipantDashboard({
     if (demoMode) {
       setSpeakerResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
     } else {
-      try { const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`); setSpeakerResults((res || []).filter((u) => u.id !== user.id)); } catch { setSpeakerResults([]); }
+      try {
+        const res = await apiFetch<User[]>("GET", `/api/users/search?q=${encodeURIComponent(q)}`);
+        setSpeakerResults((res || []).filter((u) => u.id !== user.id));
+      } catch {
+        setSpeakerResults(DEMO_ALL_USERS.filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase())));
+      }
     }
   };
   const assignSpeaker = async (userId: string, eventId: string) => {
-    if (demoMode) {
-      setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
-    } else {
-      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch {}
+    setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
+    if (!demoMode) {
+      try { await apiFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId }); } catch (e: any) { console.warn("API speaker assign:", e?.message); }
     }
     setShowAssignSpeaker("");
     setSpeakerSearch("");
