@@ -808,7 +808,11 @@ const DEMO_MEMBERSHIPS_INIT: DemoMembership[] = [
 
 // Определить лучшую роль пользователя по memberships
 function getBestRole(userId: string, memberships: DemoMembership[], globalRole?: string): "ORGANIZER" | "CURATOR" | "SPEAKER" | "PARTICIPANT" {
+  // Бэкенд ставит global_role в users таблице — это приоритет
   if (globalRole === "ORGANIZER") return "ORGANIZER";
+  if (globalRole === "CURATOR") return "CURATOR";
+  if (globalRole === "SPEAKER") return "SPEAKER";
+  // Fallback на memberships (для demo-режима)
   if (memberships.some((m) => m.user_id === userId && m.context_role === "CURATOR")) return "CURATOR";
   if (memberships.some((m) => m.user_id === userId && m.context_role === "SPEAKER")) return "SPEAKER";
   return "PARTICIPANT";
@@ -2020,6 +2024,7 @@ function OrganizerDashboard({
   const [newTitle, setNewTitle] = useState("");
   const [newDue, setNewDue] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
+  const [allUsers, setAllUsers] = useState<User[]>(demoMode ? DEMO_ALL_USERS : []);
 
   // --- Публикация мероприятия ---
   const publishEvent = async (eid: string) => {
@@ -2102,17 +2107,16 @@ function OrganizerDashboard({
         if (evs?.length) {
           setEvents(evs);
           setSelEv(evs[0].id);
+          // Load all users for assignee dropdown
+          try { const users = await apiFetch<User[]>("GET", "/api/users/search?q="); setAllUsers(users || []); } catch { /* keep demo fallback */ }
+          // Load tasks
           const all: Task[] = [];
-          // Load users for name resolution
-          const userCache: Record<string, string> = {};
           for (const ev of evs) {
             try {
               const ts = await apiFetch<any[]>("GET", `/api/tasks/?event_id=${ev.id}`);
               for (const t of (ts || [])) {
-                if (t.assigned_to && !userCache[t.assigned_to]) {
-                  try { const u = await apiFetch<any>("GET", `/api/users/search?q=`); /* fallback */ } catch {}
-                }
-                all.push({ ...t, assigned_to_name: userCache[t.assigned_to] || t.assigned_to || "" });
+                const assigneeName = (allUsers.length ? allUsers : DEMO_ALL_USERS).find((u) => u.id === t.assigned_to)?.full_name || "";
+                all.push({ ...t, assigned_to_name: assigneeName });
               }
             } catch {}
           }
@@ -2144,7 +2148,7 @@ function OrganizerDashboard({
   // --- FIX #2: добавление задачи ПРИВЯЗЫВАЕТСЯ к selEv ---
   const addTask = async () => {
     if (!newTitle.trim() || !selEv) return;
-    const assignee = DEMO_ALL_USERS.find((u) => u.id === newAssignee) || { id: user.id, full_name: user.full_name };
+    const assignee = allUsers.find((u) => u.id === newAssignee) || { id: user.id, full_name: user.full_name };
     const newTask: Task = {
       id: `t-${Date.now()}`,
       event_id: selEv,
@@ -2390,7 +2394,7 @@ function OrganizerDashboard({
                   <input type="text" placeholder="Новая задача..." value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()} style={{ flex: 2, minWidth: 180, padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
                   <select value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none", minWidth: 160 }}>
                     <option value="">Назначить на...</option>
-                    {DEMO_ALL_USERS.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                    {allUsers.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                   </select>
                   <input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", outline: "none" }} />
                   <button onClick={addTask} style={{ padding: "10px 22px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif", whiteSpace: "nowrap" }}>+ Добавить</button>
@@ -2512,6 +2516,7 @@ function ParticipantDashboard({
   const [newTitle, setNewTitle] = useState("");
   const [newDue, setNewDue] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
+  const [allUsers, setAllUsers] = useState<User[]>(demoMode ? DEMO_ALL_USERS : []);
 
   // Определяем лучшую роль пользователя из РЕАКТИВНЫХ memberships
   const bestRole = getBestRole(user.id, memberships, user.global_role);
@@ -2541,23 +2546,21 @@ function ParticipantDashboard({
     } else {
       (async () => {
         try {
-          // Load events from API
-          const evs = await apiFetch<EventData[]>("GET", "/api/events/");
-          if (evs?.length) {
-            // Also get public events we might not be member of
-            try {
-              const pubEvs = await apiFetch<EventData[]>("GET", "/api/events/public");
-              const allIds = new Set(evs.map((e) => e.id));
-              for (const pe of (pubEvs || [])) { if (!allIds.has(pe.id)) evs.push(pe); }
-            } catch {}
-          }
+          // Load users for name resolution
+          try { const users = await apiFetch<User[]>("GET", "/api/users/search?q="); setAllUsers(users || []); } catch {}
           // Load tasks
           const all: Task[] = [];
-          for (const ev of (evs || [])) {
-            try { const ts = await apiFetch<any[]>("GET", `/api/tasks/?event_id=${ev.id}`); all.push(...(ts || []).map((t: any) => ({ ...t, assigned_to_name: t.assigned_to || "" }))); } catch {}
+          for (const ev of events) {
+            try {
+              const ts = await apiFetch<any[]>("GET", `/api/tasks/?event_id=${ev.id}`);
+              all.push(...(ts || []).map((t: any) => ({ ...t, assigned_to_name: "" })));
+            } catch {}
           }
-          setTasks(isCurator ? all : all.filter((t) => t.assigned_to === user.id));
-          if (evs?.length) setSelEv(evs[0].id);
+          // Resolve names
+          const resolvedUsers = allUsers.length ? allUsers : DEMO_ALL_USERS;
+          const withNames = all.map((t) => ({ ...t, assigned_to_name: resolvedUsers.find((u) => u.id === t.assigned_to)?.full_name || "" }));
+          setTasks(isCurator ? withNames : withNames.filter((t) => t.assigned_to === user.id));
+          if (events.length) setSelEv(events[0].id);
         } catch {}
         finally { setLoading(false); }
       })();
@@ -2591,7 +2594,7 @@ function ParticipantDashboard({
     if (!newTitle.trim() || !selEv) return;
     // Куратор может назначать задачи другим, спикер/участник — только себе
     const assigneeId = (isCurator && newAssignee) ? newAssignee : user.id;
-    const assignee = DEMO_ALL_USERS.find((u) => u.id === assigneeId) || { id: user.id, full_name: user.full_name };
+    const assignee = allUsers.find((u) => u.id === assigneeId) || { id: user.id, full_name: user.full_name };
     const newTask: Task = {
       id: `t-${Date.now()}`,
       event_id: selEv,
@@ -2621,7 +2624,7 @@ function ParticipantDashboard({
   };
 
   // Пользователи для назначения (куратор может назначать спикерам своих мероприятий)
-  const assignableUsers = isCurator ? DEMO_ALL_USERS.filter((u) => u.id !== user.id) : [];
+  const assignableUsers = isCurator ? allUsers.filter((u) => u.id !== user.id) : [];
 
   // Назначить спикера (для куратора)
   const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
@@ -2737,7 +2740,7 @@ function ParticipantDashboard({
                             <div style={{ marginBottom: 12 }}>
                               <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>Назначенные спикеры</div>
                               {evSpeakers.map((sp, i) => {
-                                const spUser = DEMO_ALL_USERS.find((u) => u.id === sp.user_id);
+                                const spUser = allUsers.find((u) => u.id === sp.user_id) || DEMO_ALL_USERS.find((u) => u.id === sp.user_id);
                                 return spUser ? (
                                   <div key={i} style={{ padding: "6px 10px", background: "#fffbeb", borderRadius: 6, marginBottom: 3, fontSize: 12, fontWeight: 600, color: "#92400e", display: "inline-block", marginRight: 6 }}>
                                     🎤 {spUser.full_name}
@@ -3215,7 +3218,22 @@ function AppContent() {
 
     if (token) {
       apiFetch<User>("GET", "/api/auth/me")
-        .then((u) => setUser(u))
+        .then((u) => {
+          setUser(u);
+          // Load real events from API
+          apiFetch<EventData[]>("GET", "/api/events/").then((evs) => {
+            if (evs?.length) setSharedEvents(evs);
+          }).catch(() => {});
+          // Also load public events
+          apiFetch<EventData[]>("GET", "/api/events/public").then((evs) => {
+            if (evs?.length) {
+              setSharedEvents((prev) => {
+                const ids = new Set(prev.map((e) => e.id));
+                return [...prev, ...(evs || []).filter((e) => !ids.has(e.id))];
+              });
+            }
+          }).catch(() => {});
+        })
         .catch(() => localStorage.removeItem("access_token"))
         .finally(() => setInitLoading(false));
     } else {
@@ -3244,6 +3262,9 @@ function AppContent() {
       localStorage.setItem("access_token", res.access_token);
       setUser(res.user);
       setDemoMode(false);
+      // Load real events
+      try { const evs = await apiFetch<EventData[]>("GET", "/api/events/"); if (evs?.length) setSharedEvents(evs); } catch {}
+      try { const pubEvs = await apiFetch<EventData[]>("GET", "/api/events/public"); if (pubEvs?.length) setSharedEvents((prev) => { const ids = new Set(prev.map((e) => e.id)); return [...prev, ...pubEvs.filter((e) => !ids.has(e.id))]; }); } catch {}
     } catch (e: any) {
       setAuthError(e?.message || "Неверный email или пароль");
     } finally {
