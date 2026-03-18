@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { chatAPI, createChatSocket } from "../../api/apiClient";
-import type { ChatMessage, ChatMessagesPage, ChatRoom, ChatSocketEvent } from "../../api/apiClient";
+import { chatAPI, createChatSocket, usersAPI } from "../../api/apiClient";
+import type { ChatMessage, ChatMessagesPage, ChatRoom, ChatSocketEvent, User } from "../../api/apiClient";
 import { ErrorBlock } from "../ui/ErrorBlock";
 import { EmptyState } from "../ui/EmptyState";
 import { Spinner } from "../ui/Spinner";
@@ -43,6 +43,41 @@ export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?
 
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [roomsError, setRoomsError] = useState<string>("");
+
+  // Новый чат
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const handleSearchUsers = async (q: string) => {
+    setSearchQuery(q);
+    if (q.length < 2) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await usersAPI.search(q);
+      setSearchResults((res.data || []).filter(u => u.id !== myUserId));
+    } catch { setSearchResults([]); }
+    finally { setSearching(false); }
+  };
+
+  const handleCreateDirectChat = async (userId: string) => {
+    if (demoMode) { setShowNewChat(false); return; }
+    try {
+      const res = await chatAPI.createDirect({ user_id: userId });
+      const newRoom = roomTitle(res.data);
+      setRooms(prev => {
+        if (prev.find(r => r.id === newRoom.id)) return prev;
+        return [...prev, newRoom];
+      });
+      setActiveRoomId(newRoom.id);
+      setShowNewChat(false);
+      setSearchQuery("");
+      setSearchResults([]);
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Не удалось создать чат");
+    }
+  };
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -194,11 +229,44 @@ export function Messenger({ demoMode, myUserId }: { demoMode: boolean; myUserId?
               type="button"
               className="btn btn-primary"
               style={{ padding: "6px 10px", fontSize: 12, fontWeight: 900 }}
-              onClick={() => alert("Новый чат: появится после подключения users/auth роутеров")}
+              onClick={() => setShowNewChat(true)}
             >
               + Новый
             </button>
           </div>
+
+          {/* Диалог создания нового чата */}
+          {showNewChat && (
+            <div style={{ padding: 12, borderBottom: "1px solid #e2e8f0" }}>
+              <input
+                type="text"
+                placeholder="Поиск пользователя..."
+                value={searchQuery}
+                onChange={e => handleSearchUsers(e.target.value)}
+                autoFocus
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #dbe7ff", fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
+              />
+              {searching && <div style={{ fontSize: 12, color: "#777" }}>Поиск...</div>}
+              {searchResults.map(u => (
+                <div key={u.id} onClick={() => handleCreateDirectChat(u.id)}
+                  style={{ padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}
+                  onMouseOver={e => (e.currentTarget.style.background = "#eef6ff")}
+                  onMouseOut={e => (e.currentTarget.style.background = "transparent")}>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--primary)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900 }}>
+                    {u.full_name[0]}
+                  </div>
+                  {u.full_name}
+                </div>
+              ))}
+              {searchQuery.length >= 2 && searchResults.length === 0 && !searching && (
+                <div style={{ fontSize: 12, color: "#999" }}>Никого не найдено</div>
+              )}
+              <button onClick={() => { setShowNewChat(false); setSearchQuery(""); setSearchResults([]); }}
+                style={{ marginTop: 4, width: "100%", padding: 6, background: "#f1f5f9", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 700 }}>
+                Отмена
+              </button>
+            </div>
+          )}
 
           {loadingRooms ? (
             <Spinner size={28} label="Загрузка чатов..." />

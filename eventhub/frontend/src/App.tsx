@@ -866,15 +866,9 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
   const [activeTab, setActiveTab] = useState<"calendar" | "messenger" | "events" | "kanban" | "settings">("calendar");
   const [viewDate, setViewDate] = useState(new Date(2026, 2, 17));
   const [loading, setLoading] = useState(true);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
 
-  useEffect(() => {
-    if (demoMode) {
-      setEvents(DEMO_EVENTS);
-      setTasks(DEMO_ALL_TASKS);
-      setCalendarEntries(DEMO_CALENDAR);
-      setLoading(false);
-      return;
-    }
+  const reloadEvents = () => {
     Promise.all([
       eventsAPI.getAll(),
       tasksAPI.getCalendar(),
@@ -902,6 +896,17 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
       })
       .catch(() => { setEvents([]); setTasks([]); setCalendarEntries([]); })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (demoMode) {
+      setEvents(DEMO_EVENTS);
+      setTasks(DEMO_ALL_TASKS);
+      setCalendarEntries(DEMO_CALENDAR);
+      setLoading(false);
+      return;
+    }
+    reloadEvents();
   }, [demoMode]);
 
   const handleUpdateStatus = async (id: string, status: TaskStatus) => {
@@ -952,21 +957,27 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
       <main className="dashboard-main-content">
         {loading ? <LoadingScreen /> : (
           <>
-            {/* КАЛЕНДАРЬ с кнопкой создать */}
+            {/* КАЛЕНДАРЬ — кнопка ведёт на вкладку мероприятий */}
             {activeTab === "calendar" && (
               <CalendarView
                 entries={calendarEntries}
                 isAdmin={true}
-                onOpenModal={() => alert("Создание — подключится после бэкенда")}
+                onOpenModal={() => setActiveTab("events")}
                 viewDate={viewDate}
                 setViewDate={setViewDate}
               />
             )}
 
-            {/* МЕРОПРИЯТИЯ с процентом готовности */}
+            {/* МЕРОПРИЯТИЯ с кнопкой создания */}
             {activeTab === "events" && (
               <div>
-                <h2 style={{ fontWeight: 800, marginBottom: 24 }}>Управление мероприятиями</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                  <h2 style={{ fontWeight: 800, margin: 0 }}>Управление мероприятиями</h2>
+                  <button onClick={() => setShowCreateEvent(true)}
+                    style={{ padding: "10px 24px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+                    + Создать мероприятие
+                  </button>
+                </div>
                 <div className="row g-3">
                   {events.map(e => (
                     <div key={e.id} className="col-lg-4 col-md-6">
@@ -1029,7 +1040,82 @@ const OrganizerDashboard = ({ user, onLogout, demoMode }: { user: User; onLogout
             )}
           </>
         )}
+
+        {/* МОДАЛКА СОЗДАНИЯ МЕРОПРИЯТИЯ */}
+        {showCreateEvent && (
+          <CreateEventModal
+            onClose={() => setShowCreateEvent(false)}
+            onCreated={() => { setShowCreateEvent(false); if (!demoMode) reloadEvents(); }}
+            demoMode={demoMode}
+          />
+        )}
       </main>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------
+// МОДАЛКА СОЗДАНИЯ МЕРОПРИЯТИЯ
+// -----------------------------------------------------------
+const CreateEventModal = ({
+  onClose, onCreated, demoMode,
+}: { onClose: () => void; onCreated: () => void; demoMode: boolean }) => {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleCreate = async () => {
+    if (!title.trim()) { setError("Введите название"); return; }
+    setSaving(true); setError("");
+    if (demoMode) { onCreated(); return; }
+    try {
+      await eventsAPI.create({ title: title.trim(), description: description || undefined, start_date: startDate || undefined, end_date: endDate || undefined } as any);
+      onCreated();
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || "Не удалось создать мероприятие");
+    } finally { setSaving(false); }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "10px 14px", borderRadius: 8,
+    border: "1.5px solid var(--border)", fontSize: 14, boxSizing: "border-box",
+    fontFamily: "Nunito, sans-serif", outline: "none", marginBottom: 16,
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+      <div style={{ background: "white", borderRadius: 20, padding: 32, width: "100%", maxWidth: 480, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <h3 style={{ fontWeight: 900, margin: 0, color: "var(--primary-dark)" }}>Новое мероприятие</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#777" }}>×</button>
+        </div>
+        {error && <div style={{ background: "#fef2f2", color: "#dc2626", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>{error}</div>}
+        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Название *</label>
+        <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Например: ИТ-Форум 2026" autoFocus style={inputStyle} />
+        <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Описание</label>
+        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Дата начала</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }} />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#777", textTransform: "uppercase", marginBottom: 6 }}>Дата окончания</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={handleCreate} disabled={saving} style={{ flex: 1, padding: 12, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+            {saving ? "Создание..." : "СОЗДАТЬ"}
+          </button>
+          <button onClick={onClose} style={{ flex: 1, padding: 12, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+            ОТМЕНА
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
