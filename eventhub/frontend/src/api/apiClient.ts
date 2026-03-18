@@ -54,9 +54,9 @@ export interface User {
 export interface Event {
   id: string;
   title: string;
-  description: string;
-  start_date: string;
-  end_date: string;
+  description?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
   owner_id: string;
   status: EventStatus;
   readiness_percent?: number;
@@ -80,39 +80,46 @@ export interface Report {
   id: string;
   section_id: string;
   title: string;
-  speaker_id: string;
+  speaker_id?: string | null;
   speaker_confirmed: boolean;
-  presentation_format: PresentationFormat;
-  start_time: string;
-  end_time: string;
-  description: string;
+  presentation_format?: PresentationFormat | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  description?: string | null;
 }
 
 export interface Task {
   id: string;
   event_id: string;
   title: string;
-  assigned_to: string;
+  assigned_to?: string | null;
   created_by: string;
   status: TaskStatus;
-  due_date: string;
+  due_date?: string | null;
 }
 
 export interface Comment {
   id: string;
   report_id: string;
-  user_id: string;
+  author_id: string;
   text: string;
-  answer?: string;
   created_at: string;
+  answer_text?: string | null;
+  answer_by_id?: string | null;
+  answer_created_at?: string | null;
 }
 
 export interface Feedback {
-  id: string;
   report_id: string;
   user_id: string;
   rating: number; // 1–5
-  comment?: string;
+}
+
+export interface FeedbackAggregate {
+  report_id: string;
+  average: number;
+  count: number;
+  distribution: Record<number, number>;
 }
 
 export interface ChatRoom {
@@ -127,6 +134,48 @@ export interface ChatMessage {
   user_id: string;
   text: string;
   created_at: string;
+}
+
+export interface ChatMessagesPage {
+  items: ChatMessage[];
+  offset: number;
+  limit: number;
+}
+
+export type ChatSocketEvent =
+  | { type: "history"; items: ChatMessage[] }
+  | { type: "message"; item: ChatMessage }
+  | { type: "error"; detail: string };
+
+export interface ProgramReport {
+  id: string;
+  title: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  speaker_id?: string | null;
+  speaker_name?: string | null;
+  description?: string | null;
+}
+
+export interface ProgramSection {
+  id: string;
+  title: string;
+  format?: string | null;
+  location?: string | null;
+  section_start?: string | null;
+  section_end?: string | null;
+  reports: ProgramReport[];
+}
+
+export interface ProgramOut {
+  event_id: string;
+  sections: ProgramSection[];
+}
+
+export interface MyScheduleItem {
+  report: ProgramReport;
+  section: Omit<ProgramSection, "reports"> & { reports: [] };
+  event_id: string;
 }
 
 // -----------------------------------------------------------
@@ -235,11 +284,11 @@ export const participantsAPI = {
 
   // GET /api/events/{id}/program  (публичный, без токена)
   getProgram: (eventId: string) =>
-    api.get(`/api/events/${eventId}/program`),
+    api.get<ProgramOut>(`/api/events/${eventId}/program`),
 
   // GET /api/schedule/my
   getMySchedule: () =>
-    api.get<Report[]>("/api/schedule/my"),
+    api.get<MyScheduleItem[]>("/api/schedule/my"),
 
   // POST /api/schedule/reports/{id}
   addToSchedule: (reportId: string) =>
@@ -254,16 +303,16 @@ export const participantsAPI = {
     api.post<Comment>(`/api/reports/${reportId}/comments`, data),
 
   // PUT /api/comments/{id}/answer
-  answerComment: (commentId: string, data: { answer: string }) =>
-    api.put(`/api/comments/${commentId}/answer`, data),
+  answerComment: (commentId: string, data: { text: string }) =>
+    api.put<Comment>(`/api/comments/${commentId}/answer`, data),
 
   // POST /api/reports/{id}/feedback
-  addFeedback: (reportId: string, data: { rating: number; comment?: string }) =>
+  addFeedback: (reportId: string, data: { rating: number }) =>
     api.post<Feedback>(`/api/reports/${reportId}/feedback`, data),
 
   // GET /api/reports/{id}/feedback
   getFeedback: (reportId: string) =>
-    api.get(`/api/reports/${reportId}/feedback`),
+    api.get<FeedbackAggregate>(`/api/reports/${reportId}/feedback`),
 };
 
 // -----------------------------------------------------------
@@ -281,25 +330,23 @@ export const chatAPI = {
 
   // GET /api/chat/{room_id}/messages
   getMessages: (roomId: string, params?: { limit?: number; offset?: number }) =>
-    api.get<ChatMessage[]>(`/api/chat/${roomId}/messages`, { params }),
+    api.get<ChatMessagesPage>(`/api/chat/${roomId}/messages`, { params }),
 };
 
 // -----------------------------------------------------------
 // WEBSOCKET — утилита подключения к чату
 // Использование: const ws = createChatSocket(roomId, onMessage)
 // -----------------------------------------------------------
-export const createChatSocket = (
-  roomId: string,
-  onMessage: (msg: ChatMessage) => void
-): WebSocket => {
+export const createChatSocket = (roomId: string, onEvent: (e: ChatSocketEvent) => void): WebSocket => {
   const token = localStorage.getItem("access_token");
   const wsBase = BASE_URL.replace("http", "ws");
-  const ws = new WebSocket(`${wsBase}/ws/chat/${roomId}?token=${token}`);
+  // backend/main.py: chat router has prefix "/api/chat", websocket path "/ws/{room_id}"
+  const ws = new WebSocket(`${wsBase}/api/chat/ws/${roomId}?token=${token}`);
 
   ws.onmessage = (event) => {
     try {
-      const msg: ChatMessage = JSON.parse(event.data);
-      onMessage(msg);
+      const data: ChatSocketEvent = JSON.parse(event.data);
+      onEvent(data);
     } catch {
       console.error("WS parse error", event.data);
     }
