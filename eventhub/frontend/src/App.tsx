@@ -1771,8 +1771,8 @@ function ChatView({
     if (demoMode) {
       const demoUsers = ([
         { id: "u1", email: "org@it.ru", full_name: "Организатор Иванов", global_role: "ORGANIZER" as GlobalRole },
-        { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "CURATOR" as GlobalRole },
-        { id: "u5", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "SPEAKER" as GlobalRole },
+        { id: "u3", email: "curator@it.ru", full_name: "Куратор Секционов", global_role: "PARTICIPANT" as GlobalRole },
+        { id: "u5", email: "speaker@it.ru", full_name: "Алексей Спикеров", global_role: "PARTICIPANT" as GlobalRole },
       ] as User[]).filter((u) => u.id !== user.id && u.full_name.toLowerCase().includes(q.toLowerCase()));
       setDmResults(demoUsers);
     } else {
@@ -2053,7 +2053,6 @@ function OrganizerDashboard({
   };
   const assignCurator = async (userId: string, eventId: string) => {
     setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "CURATOR" as const }]);
-    // Кэшируем пользователя для отображения имени
     const foundUser = curatorResults.find((u) => u.id === userId);
     if (foundUser) setAllUsers((prev) => prev.some((u) => u.id === userId) ? prev : [...prev, foundUser]);
     if (!demoMode) {
@@ -2084,10 +2083,8 @@ function OrganizerDashboard({
   };
   const assignSpeakerOrg = async (userId: string, eventId: string) => {
     setMemberships((prev) => [...prev, { user_id: userId, event_id: eventId, context_role: "SPEAKER" as const }]);
-    // Кэшируем пользователя для отображения имени
-    const foundUser = speakerResults.find((u) => u.id === userId);
-    if (foundUser) setAllUsers((prev) => prev.some((u) => u.id === userId) ? prev : [...prev, foundUser]);
     if (!demoMode) {
+      // Бэкенд: назначение спикера требует report_id. Если нет — пробуем как куратора с последующим обновлением.
       try { await apiFetch("POST", `/api/events/${eventId}/speakers`, { user_id: userId }); } catch (e: any) { console.warn("API speaker assign:", e?.message); }
     }
     setShowAssignSpeaker("");
@@ -2111,7 +2108,6 @@ function OrganizerDashboard({
         if (evs?.length) {
           setEvents(evs);
           setSelEv(evs[0].id);
-          // Load all users for assignee dropdown (empty q = all users)
           let freshUsers: User[] = [];
           try { freshUsers = await apiFetch<User[]>("GET", "/api/users/search?q=") || []; setAllUsers(freshUsers); } catch {}
           // Load tasks
@@ -2126,23 +2122,20 @@ function OrganizerDashboard({
             } catch {}
           }
           setTasks(all);
-          // Load curators and speakers for all events → populate memberships
-          const loadedMemberships: DemoMembership[] = [];
+          // Load curators/speakers into memberships
+          const loaded: DemoMembership[] = [];
           for (const ev of evs) {
             try {
               const curators = await apiFetch<any[]>("GET", `/api/events/${ev.id}/curators`);
-              (curators || []).forEach((m: any) => loadedMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "CURATOR" as const }));
+              (curators || []).forEach((m: any) => loaded.push({ user_id: m.user_id, event_id: ev.id, context_role: "CURATOR" as const }));
             } catch {}
             try {
               const speakers = await apiFetch<any[]>("GET", `/api/events/${ev.id}/speakers`);
-              (speakers || []).forEach((m: any) => loadedMemberships.push({ user_id: m.user_id, event_id: ev.id, context_role: "SPEAKER" as const }));
+              (speakers || []).forEach((m: any) => loaded.push({ user_id: m.user_id, event_id: ev.id, context_role: "SPEAKER" as const }));
             } catch {}
           }
-          if (loadedMemberships.length > 0) {
-            setMemberships(prev => {
-              const participantEntries = prev.filter(m => m.context_role === "PARTICIPANT");
-              return [...participantEntries, ...loadedMemberships];
-            });
+          if (loaded.length > 0) {
+            setMemberships(prev => [...prev.filter(m => m.context_role === "PARTICIPANT"), ...loaded]);
           }
         }
       } catch {}
@@ -2365,7 +2358,6 @@ function OrganizerDashboard({
                                 ))}
                               </div>
                             )}
-                            {/* Назначенные кураторы */}
                             {memberships.filter(m => m.event_id === ev.id && m.context_role === "CURATOR").length > 0 && (
                               <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Кураторы:</span>
@@ -2375,7 +2367,6 @@ function OrganizerDashboard({
                                 })}
                               </div>
                             )}
-                            {/* Назначенные спикеры */}
                             {memberships.filter(m => m.event_id === ev.id && m.context_role === "SPEAKER").length > 0 && (
                               <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Спикеры:</span>
@@ -2677,7 +2668,7 @@ function ParticipantDashboard({
       .catch(() => {});
   }, [isCurator, demoMode, allUsers.length]);
 
-  // ═══ СЕКЦИИ КУРАТОРА (реальный режим) ═══
+  // ═══ СЕКЦИИ КУРАТОРА ═══
   const [curSections, setCurSections] = useState<any[]>([]);
   const [curReports, setCurReports] = useState<Record<string, any[]>>({});
   const [secLoading, setSecLoading] = useState(false);
@@ -2690,7 +2681,7 @@ function ParticipantDashboard({
   const [secAssignSearch, setSecAssignSearch] = useState("");
   const [secAssignResults, setSecAssignResults] = useState<User[]>([]);
   const [myEventIdForSec, setMyEventIdForSec] = useState("");
-  const myEventIdRef = useRef(""); // синхронная версия для кнопок
+  const myEventIdRef = useRef("");
 
   const loadCuratorSections = async () => {
     if (demoMode) {
@@ -2699,7 +2690,6 @@ function ParticipantDashboard({
         const prog = (DEMO_SECTIONS_PROGRAM as any)[eid] || [];
         prog.forEach((s: any) => demoSecs.push({ ...s, event_id: eid }));
       }
-      // Устанавливаем eventId для кнопки «Новая секция»
       if (curatorEventIds[0]) { setMyEventIdForSec(curatorEventIds[0]); myEventIdRef.current = curatorEventIds[0]; }
       setCurSections(demoSecs);
       const recs: Record<string, any[]> = {};
@@ -2709,61 +2699,36 @@ function ParticipantDashboard({
     }
     setSecLoading(true); setSecError("");
     try {
-      // GET /api/events/ возвращает все мероприятия где есть membership
-      // Фильтруем только те где пользователь — куратор (через /curators эндпоинт каждого или через memberships)
       const evRes = await apiFetch<any[]>("GET", "/api/events/");
-      const allEvents = evRes || [];
-
-      // Определяем мероприятия куратора:
-      // 1. Из уже загруженных memberships в памяти (быстро)
-      // 2. Если memberships пусты — проверяем каждое мероприятие через /curators
+      const myEvents = evRes || [];
+      if (myEvents.length > 0 && !myEventIdRef.current) { myEventIdRef.current = myEvents[0].id; setMyEventIdForSec(myEvents[0].id); }
       let curatorEvIds: Set<string> = new Set(curatorEventIds);
-
       if (curatorEvIds.size === 0) {
-        // Загружаем кураторские memberships для каждого мероприятия
         const token = localStorage.getItem("access_token") || "";
-        await Promise.all(allEvents.map(async (ev: any) => {
+        await Promise.all(myEvents.map(async (ev: any) => {
           try {
-            const r = await fetch(`/api/events/${ev.id}/curators`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-            if (r.ok) {
-              const ms: any[] = await r.json();
-              if (ms.some((m: any) => m.user_id === user.id)) curatorEvIds.add(ev.id);
-            }
+            const r = await fetch(`http://localhost:8000/api/events/${ev.id}/curators`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
+            if (r.ok) { const ms: any[] = await r.json(); if (ms.some((m: any) => m.user_id === user.id)) curatorEvIds.add(ev.id); }
           } catch {}
         }));
       }
-
-      // Если куратор не нашёлся ни в одном мероприятии — показываем все (fallback)
-      const myEvents = curatorEvIds.size > 0
-        ? allEvents.filter((ev: any) => curatorEvIds.has(ev.id))
-        : allEvents;
-
-      // Берём первый event_id синхронно
-      if (myEvents.length > 0 && !myEventIdRef.current) {
-        myEventIdRef.current = myEvents[0].id;
-        setMyEventIdForSec(myEvents[0].id);
-      }
-
+      const filteredEvents = curatorEvIds.size > 0 ? myEvents.filter((ev: any) => curatorEvIds.has(ev.id)) : myEvents;
+      if (filteredEvents.length > 0) { myEventIdRef.current = filteredEvents[0].id; setMyEventIdForSec(filteredEvents[0].id); }
       const allSecs: any[] = [];
-      for (const ev of myEvents) {
-        // Устанавливаем eventId — последнее известное мероприятие куратора
-        myEventIdRef.current = ev.id;
-        setMyEventIdForSec(ev.id);
-
+      for (const ev of filteredEvents) {
+        myEventIdRef.current = ev.id; setMyEventIdForSec(ev.id);
         try {
           const secsRes = await apiFetch<any[]>("GET", `/api/events/${ev.id}/sections`);
           for (const sec of secsRes || []) allSecs.push({ ...sec, event_id: sec.event_id || ev.id });
         } catch {}
       }
-
       setCurSections(allSecs);
-
-      // Загружаем доклады для каждой секции параллельно
       const recs: Record<string, any[]> = {};
       await Promise.all(allSecs.map(async (sec: any) => {
         try {
-          const reps = await apiFetch<any[]>("GET", `/api/sections/${sec.id}/reports`);
-          recs[sec.id] = reps || [];
+          const token = localStorage.getItem("access_token") || "";
+          const r = await fetch(`http://localhost:8000/api/sections/${sec.id}/reports`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+          recs[sec.id] = r.ok ? await r.json() : [];
         } catch { recs[sec.id] = []; }
       }));
       setCurReports(recs);
@@ -2778,60 +2743,55 @@ function ParticipantDashboard({
 
   const saveSec = async (form: any) => {
     const eid = secModal.section?.event_id || secModal.eventId || myEventIdRef.current || myEventIdForSec;
+    if (!eid) { alert("Не удалось определить мероприятие. Попробуйте перезайти на вкладку."); return; }
     if (demoMode) {
       const fake = { id: secModal.section?.id || `ds-${Date.now()}`, event_id: eid, curator_id: user.id, readiness_percent: 0, ...form };
       setCurSections(prev => secModal.section ? prev.map(s => s.id === fake.id ? fake : s) : [...prev, fake]);
       if (!secModal.section) setCurReports(prev => ({ ...prev, [fake.id]: [] }));
       setSecModal({ open: false, eventId: "" }); return;
     }
-    try {
-      let res: any;
-      if (secModal.section) res = await apiFetch("PATCH", `/api/sections/${secModal.section.id}`, form);
-      else res = await apiFetch("POST", `/api/events/${eid}/sections`, form);
-      setCurSections(prev => secModal.section ? prev.map(s => s.id === res.id ? res : s) : [...prev, res]);
-      if (!secModal.section) setCurReports(prev => ({ ...prev, [res.id]: [] }));
-      setSecModal({ open: false, eventId: "" });
-    } catch (e: any) { alert(e?.response?.data?.detail || e?.message || "Ошибка"); }
+    const token = localStorage.getItem("access_token") || "";
+    const url = secModal.section ? `http://localhost:8000/api/sections/${secModal.section.id}` : `http://localhost:8000/api/events/${eid}/sections`;
+    const method = secModal.section ? "PATCH" : "POST";
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(form) });
+    if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+    const created = await r.json();
+    setCurSections(prev => secModal.section ? prev.map(s => s.id === created.id ? created : s) : [...prev, created]);
+    if (!secModal.section) setCurReports(prev => ({ ...prev, [created.id]: [] }));
+    setSecModal({ open: false, eventId: "" });
   };
 
   const deleteSec = async (sec: any) => {
-    if (demoMode) {
-      setCurSections(prev => prev.filter(s => s.id !== sec.id));
-      setDelSecTarget(null); return;
-    }
-    try {
-      await apiFetch("DELETE", `/api/sections/${sec.id}`);
-      setCurSections(prev => prev.filter(s => s.id !== sec.id));
-      setDelSecTarget(null);
-    } catch (e: any) { alert(e?.message || "Ошибка удаления"); }
+    if (demoMode) { setCurSections(prev => prev.filter(s => s.id !== sec.id)); setDelSecTarget(null); return; }
+    const token = localStorage.getItem("access_token") || "";
+    const r = await fetch(`http://localhost:8000/api/sections/${sec.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok && r.status !== 204) { alert("Ошибка удаления"); return; }
+    setCurSections(prev => prev.filter(s => s.id !== sec.id)); setDelSecTarget(null);
   };
 
   const saveRep = async (form: any) => {
     const sid = repModal.report?.section_id || repModal.sectionId;
     if (demoMode) {
       const fake = { id: repModal.report?.id || `dr-${Date.now()}`, section_id: sid, speaker_id: null, speaker_confirmed: false, ...form };
-      setCurReports(prev => ({ ...prev, [sid]: repModal.report ? (prev[sid] || []).map((r: any) => r.id === fake.id ? fake : r) : [...(prev[sid] || []), fake] }));
+      setCurReports(prev => ({ ...prev, [sid]: repModal.report ? (prev[sid]||[]).map((r: any) => r.id === fake.id ? fake : r) : [...(prev[sid]||[]), fake] }));
       setRepModal({ open: false, sectionId: "" }); return;
     }
-    try {
-      let res: any;
-      if (repModal.report) res = await apiFetch("PATCH", `/api/reports/${repModal.report.id}`, form);
-      else res = await apiFetch("POST", `/api/sections/${sid}/reports`, form);
-      setCurReports(prev => ({ ...prev, [sid]: repModal.report ? (prev[sid] || []).map((r: any) => r.id === res.id ? res : r) : [...(prev[sid] || []), res] }));
-      setRepModal({ open: false, sectionId: "" });
-    } catch (e: any) { alert(e?.response?.data?.detail || e?.message || "Ошибка"); }
+    const token = localStorage.getItem("access_token") || "";
+    const url = repModal.report ? `http://localhost:8000/api/reports/${repModal.report.id}` : `http://localhost:8000/api/sections/${sid}/reports`;
+    const method = repModal.report ? "PATCH" : "POST";
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(form) });
+    if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+    const saved = await r.json();
+    setCurReports(prev => ({ ...prev, [sid]: repModal.report ? (prev[sid]||[]).map((r: any) => r.id === saved.id ? saved : r) : [...(prev[sid]||[]), saved] }));
+    setRepModal({ open: false, sectionId: "" });
   };
 
   const deleteRep = async (rep: any) => {
-    if (demoMode) {
-      setCurReports(prev => ({ ...prev, [rep.section_id]: (prev[rep.section_id] || []).filter((r: any) => r.id !== rep.id) }));
-      setDelRepTarget(null); return;
-    }
-    try {
-      await apiFetch("DELETE", `/api/reports/${rep.id}`);
-      setCurReports(prev => ({ ...prev, [rep.section_id]: (prev[rep.section_id] || []).filter((r: any) => r.id !== rep.id) }));
-      setDelRepTarget(null);
-    } catch (e: any) { alert(e?.message || "Ошибка удаления"); }
+    if (demoMode) { setCurReports(prev => ({ ...prev, [rep.section_id]: (prev[rep.section_id]||[]).filter((r: any) => r.id !== rep.id) })); setDelRepTarget(null); return; }
+    const token = localStorage.getItem("access_token") || "";
+    const r = await fetch(`http://localhost:8000/api/reports/${rep.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok && r.status !== 204) { alert("Ошибка удаления"); return; }
+    setCurReports(prev => ({ ...prev, [rep.section_id]: (prev[rep.section_id]||[]).filter((r: any) => r.id !== rep.id) })); setDelRepTarget(null);
   };
 
   const searchSecSpeakers = async (q: string) => {
@@ -2844,16 +2804,15 @@ function ParticipantDashboard({
   const assignSecSpeaker = async (speakerUser: User) => {
     if (!secAssignSpeaker) return;
     if (demoMode) {
-      setCurReports(prev => ({ ...prev, [secAssignSpeaker.section_id]: (prev[secAssignSpeaker.section_id] || []).map((r: any) => r.id === secAssignSpeaker.id ? { ...r, speaker_id: speakerUser.id, speaker_name: speakerUser.full_name } : r) }));
+      setCurReports(prev => ({ ...prev, [secAssignSpeaker.section_id]: (prev[secAssignSpeaker.section_id]||[]).map((r: any) => r.id === secAssignSpeaker.id ? { ...r, speaker_id: speakerUser.id, speaker_name: speakerUser.full_name } : r) }));
       setSecAssignSpeaker(null); setSecAssignSearch(""); setSecAssignResults([]); return;
     }
-    try {
-      await apiFetch("POST", `/api/reports/${secAssignSpeaker.id}/speaker`, { user_id: speakerUser.id });
-      setCurReports(prev => ({ ...prev, [secAssignSpeaker.section_id]: (prev[secAssignSpeaker.section_id] || []).map((r: any) => r.id === secAssignSpeaker.id ? { ...r, speaker_id: speakerUser.id, speaker_name: speakerUser.full_name } : r) }));
-      setSecAssignSpeaker(null); setSecAssignSearch(""); setSecAssignResults([]);
-    } catch (e: any) { alert(e?.response?.data?.detail || e?.message || "Ошибка"); }
+    const token = localStorage.getItem("access_token") || "";
+    const r = await fetch(`http://localhost:8000/api/reports/${secAssignSpeaker.id}/speaker`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ user_id: speakerUser.id }) });
+    if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || "Ошибка"); return; }
+    setCurReports(prev => ({ ...prev, [secAssignSpeaker.section_id]: (prev[secAssignSpeaker.section_id]||[]).map((r: any) => r.id === secAssignSpeaker.id ? { ...r, speaker_id: speakerUser.id, speaker_name: speakerUser.full_name } : r) }));
+    setSecAssignSpeaker(null); setSecAssignSearch(""); setSecAssignResults([]);
   };
-
 
   // Назначить спикера (для куратора)
   const [showAssignSpeaker, setShowAssignSpeaker] = useState("");
@@ -2962,11 +2921,10 @@ function ParticipantDashboard({
                   const reps: any[] = curReports[sec.id] || [];
                   return (
                     <div key={sec.id} style={{ background: "white", borderRadius: 16, border: "1.5px solid var(--border)", marginBottom: 16, overflow: "hidden", boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
-                      {/* Заголовок секции */}
                       <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#f8fbff" }}>
                         <div>
                           <div style={{ fontWeight: 900, fontSize: 16, color: "var(--primary-dark)" }}>📌 {sec.title}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, display: "flex", gap: 10 }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
                             {sec.location && <span>📍 {sec.location}</span>}
                             {sec.format && <span>📌 {sec.format}</span>}
                             {sec.section_start && <span>🕐 {new Date(sec.section_start).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
@@ -2974,55 +2932,39 @@ function ParticipantDashboard({
                         </div>
                         <div style={{ display: "flex", gap: 6 }}>
                           <button onClick={() => setSecModal({ open: true, section: sec, eventId: sec.event_id })}
-                            style={{ padding: "5px 12px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                            ✏️ Изменить
-                          </button>
+                            style={{ padding: "5px 12px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>✏️ Изменить</button>
                           <button onClick={() => setDelSecTarget(sec)}
-                            style={{ padding: "5px 12px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                            🗑
-                          </button>
+                            style={{ padding: "5px 12px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>🗑</button>
                         </div>
                       </div>
-
-                      {/* Доклады */}
-                      <div style={{ padding: "14px 18px" }}>
+                      <div style={{ padding: "12px 18px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                           <span style={{ fontSize: 13, fontWeight: 800, color: "#475569" }}>Доклады ({reps.length})</span>
                           <button onClick={() => setRepModal({ open: true, sectionId: sec.id })}
-                            style={{ padding: "5px 12px", background: "#ecfdf5", color: "#10b981", border: "1px solid #a7f3d0", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                            + Добавить доклад
-                          </button>
+                            style={{ padding: "5px 12px", background: "#ecfdf5", color: "#10b981", border: "1px solid #a7f3d0", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>+ Добавить доклад</button>
                         </div>
-
                         {reps.length === 0 ? (
-                          <div style={{ color: "#94a3b8", fontSize: 13, padding: "8px 0" }}>Нет докладов</div>
+                          <div style={{ color: "#94a3b8", fontSize: 13, padding: "8px 0" }}>Докладов нет</div>
                         ) : (
                           <div style={{ display: "grid", gap: 8 }}>
                             {reps.map((r: any) => (
-                              <div key={r.id} style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 14px", border: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <div key={r.id} style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 14px", border: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
                                   <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
                                     {r.start_time && <span>🕐 {new Date(r.start_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>}
                                     {r.presentation_format && <span style={{ padding: "1px 7px", borderRadius: 100, background: "#e8f0fe", color: "var(--primary)", fontSize: 10, fontWeight: 800 }}>{r.presentation_format}</span>}
-                                    {r.speaker_id
-                                      ? <span style={{ color: r.speaker_confirmed ? "#16a34a" : "#92400e" }}>🎤 {r.speaker_name || "Спикер"} {r.speaker_confirmed ? "✅" : "⏳"}</span>
-                                      : <span style={{ color: "#dc2626" }}>🎤 Спикер не назначен</span>}
+                                    {r.speaker_id ? <span style={{ color: r.speaker_confirmed ? "#16a34a" : "#92400e" }}>🎤 {r.speaker_name || "Спикер"} {r.speaker_confirmed ? "✅" : "⏳"}</span> : <span style={{ color: "#dc2626" }}>🎤 Спикер не назначен</span>}
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", gap: 4 }}>
                                   <button onClick={() => setSecAssignSpeaker(r)}
                                     style={{ padding: "4px 10px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                                    🎤 {r.speaker_id ? "Сменить" : "Спикер"}
-                                  </button>
+                                    🎤 {r.speaker_id ? "Сменить" : "Спикер"}</button>
                                   <button onClick={() => setRepModal({ open: true, report: r, sectionId: sec.id })}
-                                    style={{ padding: "4px 8px", background: "#f1f5f9", color: "#64748b", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                                    ✏️
-                                  </button>
+                                    style={{ padding: "4px 8px", background: "#f1f5f9", color: "#64748b", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer" }}>✏️</button>
                                   <button onClick={() => setDelRepTarget(r)}
-                                    style={{ padding: "4px 8px", background: "#fef2f2", color: "#dc2626", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                                    🗑
-                                  </button>
+                                    style={{ padding: "4px 8px", background: "#fef2f2", color: "#dc2626", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer" }}>🗑</button>
                                 </div>
                               </div>
                             ))}
@@ -3033,7 +2975,7 @@ function ParticipantDashboard({
                   );
                 })}
 
-                {/* ─── МОДАЛКА: секция ─── */}
+                {/* ── МОДАЛКИ ── */}
                 {secModal.open && (
                   <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
                     <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 500, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)", maxHeight: "90vh", overflowY: "auto" }}>
@@ -3043,70 +2985,28 @@ function ParticipantDashboard({
                       </div>
                       {(() => {
                         const s = secModal.section;
-                        const inp = (label: string, key: string, type = "text", placeholder = "") => {
-                          const id = `sec-${key}`;
-                          return (
-                            <div style={{ marginBottom: 12 }}>
-                              <label htmlFor={id} style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>{label}</label>
-                              <input id={id} type={type} placeholder={placeholder} defaultValue={s?.[key] ? (type === "datetime-local" ? String(s[key]).slice(0,16) : s[key]) : ""}
-                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }}
-                                onChange={e => { (secModal as any)[`_${key}`] = e.target.value; }} />
-                            </div>
-                          );
-                        };
+                        const iStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none", marginBottom: 10 };
+                        const lStyle: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 };
                         return (
-                          <form onSubmit={e => { e.preventDefault();
-                            const fd = new FormData(e.currentTarget);
-                            const form: any = {};
-                            ["title","format","location","section_start","section_end","tech_notes"].forEach(k => { const v = fd.get(k); if (v) form[k] = String(v); });
-                            saveSec(form);
-                          }}>
-                            <div style={{ marginBottom: 12 }}>
-                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Название *</label>
-                              <input name="title" required defaultValue={s?.title || ""} placeholder="Название секции" autoFocus
-                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }} />
+                          <form onSubmit={e => { e.preventDefault(); const fd = new FormData(e.currentTarget); const form: any = {}; ["title","format","location","section_start","section_end","tech_notes"].forEach(k => { const v = fd.get(k); if (v) form[k] = String(v); }); saveSec(form); }}>
+                            <label style={lStyle}>Название *</label>
+                            <input name="title" required defaultValue={s?.title || ""} autoFocus style={iStyle} placeholder="Название секции" />
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                              <div><label style={lStyle}>Формат</label>
+                                <select name="format" defaultValue={s?.format || ""} style={iStyle}>
+                                  <option value="">Не выбран</option><option value="SEQUENTIAL">Последовательный</option><option value="ROUNDTABLE">Круглый стол</option><option value="PANEL">Панельная дискуссия</option><option value="WORKSHOP">Воркшоп</option>
+                                </select></div>
+                              <div><label style={lStyle}>Локация</label><input name="location" defaultValue={s?.location || ""} style={iStyle} placeholder="Зал A..." /></div>
                             </div>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                              <div>
-                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Формат</label>
-                                <select name="format" defaultValue={s?.format || ""} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }}>
-                                  <option value="">Не выбран</option>
-                                  <option value="SEQUENTIAL">Последовательный</option>
-                                  <option value="ROUNDTABLE">Круглый стол</option>
-                                  <option value="PANEL">Панельная дискуссия</option>
-                                  <option value="WORKSHOP">Воркшоп</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Локация</label>
-                                <input name="location" defaultValue={s?.location || ""} placeholder="Зал A..."
-                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }} />
-                              </div>
+                              <div><label style={lStyle}>Начало</label><input type="datetime-local" name="section_start" defaultValue={s?.section_start ? String(s.section_start).slice(0,16) : ""} style={iStyle} /></div>
+                              <div><label style={lStyle}>Конец</label><input type="datetime-local" name="section_end" defaultValue={s?.section_end ? String(s.section_end).slice(0,16) : ""} style={iStyle} /></div>
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 0 }}>
-                              <div>
-                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Начало</label>
-                                <input type="datetime-local" name="section_start" defaultValue={s?.section_start ? String(s.section_start).slice(0,16) : ""}
-                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
-                              </div>
-                              <div>
-                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Конец</label>
-                                <input type="datetime-local" name="section_end" defaultValue={s?.section_end ? String(s.section_end).slice(0,16) : ""}
-                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
-                              </div>
-                            </div>
-                            <div style={{ marginTop: 10 }}>
-                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Технические заметки</label>
-                              <textarea name="tech_notes" defaultValue={s?.tech_notes || ""} rows={3} placeholder="Оборудование, требования..."
-                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", resize: "vertical" }} />
-                            </div>
-                            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                              <button type="submit" style={{ flex: 1, padding: 11, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                                {secModal.section ? "Сохранить" : "Создать секцию"}
-                              </button>
-                              <button type="button" onClick={() => setSecModal({ open: false, eventId: "" })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                                Отмена
-                              </button>
+                            <label style={lStyle}>Технические заметки</label>
+                            <textarea name="tech_notes" defaultValue={s?.tech_notes || ""} rows={3} style={{ ...iStyle, resize: "vertical" }} />
+                            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                              <button type="submit" style={{ flex: 1, padding: 11, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>{secModal.section ? "Сохранить" : "Создать секцию"}</button>
+                              <button type="button" onClick={() => setSecModal({ open: false, eventId: "" })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
                             </div>
                           </form>
                         );
@@ -3115,7 +3015,6 @@ function ParticipantDashboard({
                   </div>
                 )}
 
-                {/* ─── МОДАЛКА: доклад ─── */}
                 {repModal.open && (
                   <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
                     <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 480, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #10b981", maxHeight: "90vh", overflowY: "auto" }}>
@@ -3125,50 +3024,25 @@ function ParticipantDashboard({
                       </div>
                       {(() => {
                         const r = repModal.report;
+                        const iStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none", marginBottom: 10 };
+                        const lStyle: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 };
                         return (
-                          <form onSubmit={e => { e.preventDefault();
-                            const fd = new FormData(e.currentTarget);
-                            const form: any = {};
-                            ["title","description","presentation_format","start_time","end_time"].forEach(k => { const v = fd.get(k); if (v) form[k] = String(v); });
-                            saveRep(form);
-                          }}>
-                            <div style={{ marginBottom: 12 }}>
-                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Название *</label>
-                              <input name="title" required defaultValue={r?.title || ""} placeholder="Название доклада" autoFocus
-                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none" }} />
-                            </div>
-                            <div style={{ marginBottom: 12 }}>
-                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Описание</label>
-                              <textarea name="description" defaultValue={r?.description || ""} rows={3}
-                                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", resize: "vertical" }} />
-                            </div>
+                          <form onSubmit={e => { e.preventDefault(); const fd = new FormData(e.currentTarget); const form: any = {}; ["title","description","presentation_format","start_time","end_time"].forEach(k => { const v = fd.get(k); if (v) form[k] = String(v); }); saveRep(form); }}>
+                            <label style={lStyle}>Название *</label>
+                            <input name="title" required defaultValue={r?.title || ""} autoFocus style={iStyle} placeholder="Название доклада" />
+                            <label style={lStyle}>Описание</label>
+                            <textarea name="description" defaultValue={r?.description || ""} rows={3} style={{ ...iStyle, resize: "vertical" }} />
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                              <div>
-                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Начало</label>
-                                <input type="datetime-local" name="start_time" defaultValue={r?.start_time ? String(r.start_time).slice(0,16) : ""}
-                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
-                              </div>
-                              <div>
-                                <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Конец</label>
-                                <input type="datetime-local" name="end_time" defaultValue={r?.end_time ? String(r.end_time).slice(0,16) : ""}
-                                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }} />
-                              </div>
+                              <div><label style={lStyle}>Начало</label><input type="datetime-local" name="start_time" defaultValue={r?.start_time ? String(r.start_time).slice(0,16) : ""} style={iStyle} /></div>
+                              <div><label style={lStyle}>Конец</label><input type="datetime-local" name="end_time" defaultValue={r?.end_time ? String(r.end_time).slice(0,16) : ""} style={iStyle} /></div>
                             </div>
-                            <div style={{ marginTop: 10, marginBottom: 12 }}>
-                              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 }}>Формат</label>
-                              <select name="presentation_format" defaultValue={r?.presentation_format || ""} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box" }}>
-                                <option value="">Не выбран</option>
-                                <option value="OFFLINE">Офлайн</option>
-                                <option value="ONLINE">Онлайн</option>
-                              </select>
-                            </div>
+                            <label style={lStyle}>Формат</label>
+                            <select name="presentation_format" defaultValue={r?.presentation_format || ""} style={iStyle}>
+                              <option value="">Не выбран</option><option value="OFFLINE">Офлайн</option><option value="ONLINE">Онлайн</option>
+                            </select>
                             <div style={{ display: "flex", gap: 10 }}>
-                              <button type="submit" style={{ flex: 1, padding: 11, background: "#10b981", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                                {repModal.report ? "Сохранить" : "Создать доклад"}
-                              </button>
-                              <button type="button" onClick={() => setRepModal({ open: false, sectionId: "" })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                                Отмена
-                              </button>
+                              <button type="submit" style={{ flex: 1, padding: 11, background: "#10b981", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>{repModal.report ? "Сохранить" : "Создать доклад"}</button>
+                              <button type="button" onClick={() => setRepModal({ open: false, sectionId: "" })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
                             </div>
                           </form>
                         );
@@ -3177,7 +3051,32 @@ function ParticipantDashboard({
                   </div>
                 )}
 
-                {/* ─── МОДАЛКА: назначить спикера ─── */}
+                {delSecTarget && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
+                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
+                      <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить секцию?</h3>
+                      <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>«{delSecTarget.title}» и все её доклады будут удалены.</p>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button onClick={() => deleteSec(delSecTarget)} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
+                        <button onClick={() => setDelSecTarget(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {delRepTarget && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
+                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
+                      <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить доклад?</h3>
+                      <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>«{delRepTarget.title}» будет удалён.</p>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button onClick={() => deleteRep(delRepTarget)} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
+                        <button onClick={() => setDelRepTarget(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {secAssignSpeaker && (
                   <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
                     <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)" }}>
@@ -3195,10 +3094,7 @@ function ParticipantDashboard({
                               style={{ padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}
                               onMouseOver={e => (e.currentTarget.style.background = "#f0f7ff")} onMouseOut={e => (e.currentTarget.style.background = "white")}>
                               <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, flexShrink: 0 }}>{u.full_name[0]}</div>
-                              <div>
-                                <div style={{ fontWeight: 700, fontSize: 14 }}>{u.full_name}</div>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email}</div>
-                              </div>
+                              <div><div style={{ fontWeight: 700, fontSize: 14 }}>{u.full_name}</div><div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email}</div></div>
                             </div>
                           ))}
                         </div>
@@ -3207,37 +3103,10 @@ function ParticipantDashboard({
                     </div>
                   </div>
                 )}
-
-                {/* ─── ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ СЕКЦИИ ─── */}
-                {delSecTarget && (
-                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
-                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
-                      <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить секцию?</h3>
-                      <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>Секция «{delSecTarget.title}» и все её доклады будут удалены.</p>
-                      <div style={{ display: "flex", gap: 10 }}>
-                        <button onClick={() => deleteSec(delSecTarget)} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
-                        <button onClick={() => setDelSecTarget(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ─── ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ ДОКЛАДА ─── */}
-                {delRepTarget && (
-                  <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
-                    <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
-                      <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить доклад?</h3>
-                      <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>Доклад «{delRepTarget.title}» будет удалён.</p>
-                      <div style={{ display: "flex", gap: 10 }}>
-                        <button onClick={() => deleteRep(delRepTarget)} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
-                        <button onClick={() => setDelRepTarget(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
+            {/* ═══ TAB: КАНБАН ═══ */}
             {tab === "kanban" && (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
@@ -3381,9 +3250,14 @@ function ProgramTab({
   const [expandedEv, setExpandedEv] = useState<string>("");
   const [sections, setSections] = useState<Record<string, any[]>>({});
   const [loadingSections, setLoadingSections] = useState<Record<string, boolean>>({});
-  // Доклады добавленные в расписание (локальный стейт)
   const [scheduleReports, setScheduleReports] = useState<Set<string>>(new Set());
   const [addingReport, setAddingReport] = useState<string>("");
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [comments, setComments] = useState<Record<string, any[]>>({});
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [commentText, setCommentText] = useState<Record<string, string>>({});
+  const [submittingComment, setSubmittingComment] = useState<string>("");
+  const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
 
   const loadSections = async (evId: string) => {
     if (sections[evId]) { setExpandedEv(evId === expandedEv ? "" : evId); return; }
@@ -3424,6 +3298,40 @@ function ProgramTab({
       await apiFetch("DELETE", `/api/schedule/reports/${reportId}`);
       setScheduleReports((p) => { const n = new Set(p); n.delete(reportId); return n; });
     } catch {}
+  };
+
+  const submitRating = async (reportId: string, rating: number) => {
+    setRatings(prev => ({ ...prev, [reportId]: rating }));
+    if (!demoMode) { try { await apiFetch("POST", `/api/reports/${reportId}/feedback`, { rating }); } catch {} }
+  };
+
+  const loadComments = async (reportId: string) => {
+    const isExp = expandedComments.has(reportId);
+    if (isExp) { setExpandedComments(prev => { const n = new Set(prev); n.delete(reportId); return n; }); return; }
+    setExpandedComments(prev => new Set(prev).add(reportId));
+    if (comments[reportId] !== undefined) return;
+    setLoadingComments(prev => new Set(prev).add(reportId));
+    if (!demoMode) {
+      try { const d = await apiFetch<any[]>("GET", `/api/reports/${reportId}/comments`); setComments(prev => ({ ...prev, [reportId]: d || [] })); }
+      catch { setComments(prev => ({ ...prev, [reportId]: [] })); }
+    } else { setComments(prev => ({ ...prev, [reportId]: [] })); }
+    setLoadingComments(prev => { const n = new Set(prev); n.delete(reportId); return n; });
+  };
+
+  const submitComment = async (reportId: string) => {
+    const text = (commentText[reportId] || "").trim();
+    if (!text) return;
+    setSubmittingComment(reportId);
+    const tmp = { id: `tmp-${Date.now()}`, report_id: reportId, author_id: userId, author_name: "Вы", text, created_at: new Date().toISOString() };
+    setComments(prev => ({ ...prev, [reportId]: [...(prev[reportId] || []), tmp] }));
+    setCommentText(prev => ({ ...prev, [reportId]: "" }));
+    if (!demoMode) {
+      try {
+        const saved = await apiFetch<any>("POST", `/api/reports/${reportId}/comments`, { text });
+        setComments(prev => ({ ...prev, [reportId]: [...(prev[reportId] || []).filter((c: any) => c.id !== tmp.id), saved] }));
+      } catch {}
+    }
+    setSubmittingComment("");
   };
 
   const fmtTime = (iso?: string) => {
@@ -3479,33 +3387,67 @@ function ProgramTab({
                         {sec.location && <span style={{ color: "var(--text-muted)", fontWeight: 600, marginLeft: 8 }}>· 📍 {sec.location}</span>}
                       </div>
                       <div style={{ display: "grid", gap: 8 }}>
-                        {(sec.reports || []).map((r: any) => (
-                          <div key={r.id} style={{ background: "white", borderRadius: 10, padding: "12px 16px", border: "1.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              {r.start_time && (
-                                <div style={{ fontSize: 11, color: "var(--primary)", fontWeight: 800, marginBottom: 2 }}>
-                                  {fmtTime(r.start_time)}{r.end_time ? ` – ${fmtTime(r.end_time)}` : ""}
+                        {(sec.reports || []).map((r: any) => {
+                          const isExp = expandedComments.has(r.id);
+                          const repComments = comments[r.id] || [];
+                          const myRating = ratings[r.id] || 0;
+                          return (
+                          <div key={r.id} style={{ background: "white", borderRadius: 12, border: "1.5px solid var(--border)", overflow: "hidden" }}>
+                            <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {r.start_time && <div style={{ fontSize: 11, color: "var(--primary)", fontWeight: 800, marginBottom: 2 }}>{fmtTime(r.start_time)}{r.end_time ? ` – ${fmtTime(r.end_time)}` : ""}</div>}
+                                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
+                                {r.speaker_name && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🎤 {r.speaker_name}</div>}
+                                {r.description && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>{r.description}</div>}
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+                                <button onClick={() => scheduleReports.has(r.id) ? removeFromSchedule(r.id) : addToSchedule(r.id)} disabled={addingReport === r.id}
+                                  style={{ padding: "6px 12px", borderRadius: 100, fontWeight: 800, fontSize: 11, cursor: addingReport === r.id ? "wait" : "pointer", fontFamily: "Nunito, sans-serif", border: "none", background: scheduleReports.has(r.id) ? "#f0fdf4" : "var(--primary)", color: scheduleReports.has(r.id) ? "#16a34a" : "white", opacity: addingReport === r.id ? 0.6 : 1 }}>
+                                  {addingReport === r.id ? "..." : scheduleReports.has(r.id) ? "✓ В расписании" : "+ В расписание"}
+                                </button>
+                                <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                                  <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 3 }}>Оценка:</span>
+                                  {[1,2,3,4,5].map(star => (
+                                    <span key={star} onClick={() => submitRating(r.id, star)} style={{ cursor: "pointer", fontSize: 16, color: star <= myRating ? "#f59e0b" : "#e2e8f0", transition: "color 0.1s", userSelect: "none" }}>★</span>
+                                  ))}
                                 </div>
-                              )}
-                              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
-                              {r.speaker_name && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🎤 {r.speaker_name}</div>}
+                              </div>
                             </div>
-                            <button
-                              onClick={() => scheduleReports.has(r.id) ? removeFromSchedule(r.id) : addToSchedule(r.id)}
-                              disabled={addingReport === r.id}
-                              style={{
-                                padding: "7px 14px", borderRadius: 100, fontWeight: 800, fontSize: 12,
-                                cursor: addingReport === r.id ? "wait" : "pointer",
-                                fontFamily: "Nunito, sans-serif", border: "none", flexShrink: 0,
-                                background: scheduleReports.has(r.id) ? "#f0fdf4" : "var(--primary)",
-                                color: scheduleReports.has(r.id) ? "#16a34a" : "white",
-                                opacity: addingReport === r.id ? 0.6 : 1,
-                              }}
-                            >
-                              {addingReport === r.id ? "..." : scheduleReports.has(r.id) ? "✓ В расписании" : "+ В расписание"}
-                            </button>
+                            <div style={{ borderTop: "1px solid #f1f5f9", padding: "6px 16px" }}>
+                              <button onClick={() => loadComments(r.id)} style={{ background: "none", border: "none", fontSize: 12, color: "var(--primary)", fontWeight: 700, cursor: "pointer", padding: "3px 0", fontFamily: "Nunito, sans-serif" }}>
+                                {loadingComments.has(r.id) ? "Загрузка..." : isExp ? `💬 Скрыть вопросы (${repComments.length})` : `💬 Вопросы${repComments.length > 0 ? ` (${repComments.length})` : ""}`}
+                              </button>
+                            </div>
+                            {isExp && (
+                              <div style={{ borderTop: "1px solid #f1f5f9", padding: "12px 16px", background: "#fafbfc" }}>
+                                {repComments.map((c: any) => (
+                                  <div key={c.id} style={{ background: "white", borderRadius: 8, padding: "10px 12px", border: "1px solid var(--border)", marginBottom: 8 }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                      <span style={{ fontWeight: 700, fontSize: 12, color: "var(--primary-dark)" }}>{c.author_name || "Участник"}</span>
+                                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{new Date(c.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                                    </div>
+                                    <div style={{ fontSize: 13, color: "#334155" }}>{c.text}</div>
+                                    {c.answer_text && (
+                                      <div style={{ marginTop: 8, padding: "8px 10px", background: "#eef6ff", borderRadius: 6, borderLeft: "3px solid var(--primary)" }}>
+                                        <div style={{ fontSize: 10, fontWeight: 800, color: "var(--primary)", marginBottom: 2 }}>Ответ {c.answer_by_name ? `· ${c.answer_by_name}` : ""}</div>
+                                        <div style={{ fontSize: 12, color: "#334155" }}>{c.answer_text}</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <input type="text" placeholder="Задать вопрос по докладу..." value={commentText[r.id] || ""} onChange={e => setCommentText(prev => ({ ...prev, [r.id]: e.target.value }))} onKeyDown={e => e.key === "Enter" && submitComment(r.id)}
+                                    style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none" }} />
+                                  <button onClick={() => submitComment(r.id)} disabled={submittingComment === r.id || !(commentText[r.id]||"").trim()}
+                                    style={{ padding: "8px 14px", background: "var(--primary)", color: "white", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif", opacity: (submittingComment === r.id || !(commentText[r.id]||"").trim()) ? 0.5 : 1 }}>
+                                    Отправить
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))

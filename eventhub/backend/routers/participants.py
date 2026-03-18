@@ -140,10 +140,12 @@ class CommentOut(BaseModel):
     id: str
     report_id: str
     author_id: str
+    author_name: Optional[str] = None   # резолвится при выдаче
     text: str
     created_at: datetime
     answer_text: Optional[str] = None
     answer_by_id: Optional[str] = None
+    answer_by_name: Optional[str] = None  # резолвится при выдаче
     answer_created_at: Optional[datetime] = None
 
 
@@ -354,7 +356,7 @@ def list_report_comments(
     id: str,
     db: Session = Depends(get_db),
 ) -> List[CommentOut]:
-    """Список комментариев к докладу."""
+    """Список комментариев к докладу с именами авторов."""
     _get_report_with_section_or_404(db, id)
     stmt = (
         select(ReportComment)
@@ -362,7 +364,26 @@ def list_report_comments(
         .order_by(ReportComment.created_at.asc())
     )
     comments = list(db.execute(stmt).scalars().all())
-    return [CommentOut.model_validate(c, from_attributes=True) for c in comments]
+
+    # Резолвим имена одним запросом
+    user_ids = set()
+    for c in comments:
+        user_ids.add(c.author_id)
+        if c.answer_by_id:
+            user_ids.add(c.answer_by_id)
+    users_map: dict = {}
+    if user_ids:
+        from models import User as UserModel
+        users = db.execute(select(UserModel).where(UserModel.id.in_(user_ids))).scalars().all()
+        users_map = {u.id: u.full_name for u in users}
+
+    result = []
+    for c in comments:
+        out = CommentOut.model_validate(c, from_attributes=True)
+        out.author_name = users_map.get(c.author_id)
+        out.answer_by_name = users_map.get(c.answer_by_id) if c.answer_by_id else None
+        result.append(out)
+    return result
 
 
 @router.post("/reports/{id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
@@ -387,7 +408,9 @@ def create_report_comment(
     db.add(comment)
     db.commit()
     db.refresh(comment)
-    return CommentOut.model_validate(comment, from_attributes=True)
+    out = CommentOut.model_validate(comment, from_attributes=True)
+    out.author_name = current_user.full_name
+    return out
 
 
 @router.put("/comments/{id}/answer", response_model=CommentOut)
@@ -411,7 +434,13 @@ def answer_comment(
     db.add(comment)
     db.commit()
     db.refresh(comment)
-    return CommentOut.model_validate(comment, from_attributes=True)
+    # Резолвим имена
+    from models import User as UserModel
+    author = db.get(UserModel, comment.author_id)
+    out = CommentOut.model_validate(comment, from_attributes=True)
+    out.author_name = author.full_name if author else None
+    out.answer_by_name = current_user.full_name
+    return out
 
 
 @router.post("/reports/{id}/feedback", response_model=FeedbackOut)
