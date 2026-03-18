@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from routers import tasks
 
 app = FastAPI(
     title="EventHub API",
@@ -16,16 +17,13 @@ app.add_middleware(
 )
 
 # Роутеры подключаются сюда по мере готовности каждого разработчика:
-# from routers import auth, events, tasks, participants, chat
+from routers import tasks, participants, chat
 # app.include_router(auth.router,         prefix="/api/auth",         tags=["Auth"])
 # app.include_router(events.router,       prefix="/api/events",       tags=["Events"])
-# app.include_router(tasks.router,        prefix="/api/tasks",        tags=["Tasks"])
-# app.include_router(participants.router, prefix="/api/participants",  tags=["Participants"])
-# app.include_router(chat.router,         prefix="/api/chat",         tags=["Chat"])
+app.include_router(tasks.router,        prefix="/api",        tags=["Tasks"])
+app.include_router(participants.router, prefix="/api/participants",  tags=["Participants"])
+app.include_router(chat.router,         prefix="/api/chat",         tags=["Chat"])
 
-from routers import chat, participants
-app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
-app.include_router(participants.router, prefix="/api", tags=["Participants"])
 
 @app.get("/", tags=["Health"])
 def root():
