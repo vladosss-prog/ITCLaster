@@ -148,6 +148,13 @@ a { text-decoration: none; color: inherit; }
   font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
   margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.cal-nav-btn {
+  padding: 8px 18px; background: white; border: 1.5px solid var(--border);
+  border-radius: 8px; font-weight: 800; cursor: pointer;
+  font-family: 'Nunito', sans-serif; font-size: 14px; color: var(--primary-dark);
+  transition: background 0.15s, border-color 0.15s;
+}
+.cal-nav-btn:hover { background: var(--bg-medium); border-color: var(--primary); }
 
 .chat-wrapper { display: flex; height: calc(100vh - 100px); border-radius: 16px; overflow: hidden; border: 1.5px solid var(--border); background: white; }
 .chat-rooms-list { width: 280px; border-right: 1.5px solid var(--border); display: flex; flex-direction: column; background: #fafbfc; }
@@ -1020,39 +1027,14 @@ function CalendarView({
           marginBottom: 20,
         }}
       >
-        <button
-          onClick={() => setViewDate(new Date(year, month - 1, 1))}
-          style={{
-            padding: "8px 16px",
-            background: "white",
-            border: "1.5px solid var(--border)",
-            borderRadius: 8,
-            fontWeight: 800,
-            cursor: "pointer",
-            fontFamily: "Nunito, sans-serif",
-            fontSize: 13,
-          }}
-        >
-          ← Назад
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="cal-nav-btn" onClick={() => setViewDate(new Date(year, month - 1, 1))}>← Назад</button>
+          <button className="cal-nav-btn" onClick={() => setViewDate(new Date())} style={{ fontSize: 12, padding: "8px 12px" }}>Сегодня</button>
+        </div>
         <h2 style={{ fontWeight: 900, fontSize: 20, color: "var(--primary-dark)" }}>
           {monthNames[month]} {year}
         </h2>
-        <button
-          onClick={() => setViewDate(new Date(year, month + 1, 1))}
-          style={{
-            padding: "8px 16px",
-            background: "white",
-            border: "1.5px solid var(--border)",
-            borderRadius: 8,
-            fontWeight: 800,
-            cursor: "pointer",
-            fontFamily: "Nunito, sans-serif",
-            fontSize: 13,
-          }}
-        >
-          Вперёд →
-        </button>
+        <button className="cal-nav-btn" onClick={() => setViewDate(new Date(year, month + 1, 1))}>Вперёд →</button>
       </div>
 
       {/* Дни недели */}
@@ -1234,6 +1216,13 @@ function ChatView({
           if (r.type === "GROUP" && r.event_id) {
             try { const ev = await apiFetch<any>("GET", "/api/events/" + r.event_id); name = ev.title; } catch {}
           }
+          if (r.type === "DIRECT") {
+            if (r.name) name = r.name;
+            else if (r.participants) {
+              const other = (r.participants as any[]).find((p: any) => p.id !== user.id);
+              if (other) name = other.full_name || other.name || "ЛС";
+            }
+          }
           mapped.push({ id: r.id, event_id: r.event_id || null, type: r.type, name, avatar: r.type === "GROUP" ? "🏢" : "💬" });
         }
         setRooms(mapped);
@@ -1244,7 +1233,7 @@ function ChatView({
             const items = data.items || data || [];
             setMessages((Array.isArray(items) ? items : []).map((m: any) => ({
               id: m.id, room_id: m.room_id, user_id: m.user_id,
-              user_name: m.user_id === user.id ? user.full_name : "Пользователь",
+              user_name: m.user_id === user.id ? user.full_name : (m.user_name || m.sender_name || "Пользователь"),
               text: m.text, created_at: m.created_at,
             })));
           } catch {}
@@ -1263,7 +1252,9 @@ function ChatView({
 
   // Сообщения для активной комнаты
   const roomMessages = useMemo(
-    () => messages.filter((m) => m.room_id === activeRoomId).sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    () => messages
+      .filter((m) => m.room_id === activeRoomId && m.id && m.text)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [messages, activeRoomId]
   );
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
@@ -1290,7 +1281,14 @@ function ChatView({
     }
     try {
       const msg = await apiFetch<any>("POST", `/api/chat/${activeRoomId}/messages`, { text });
-      setMessages((prev) => [...prev, { id: msg.id, room_id: msg.room_id, user_id: msg.user_id, user_name: user.full_name, text: msg.text, created_at: msg.created_at }]);
+      setMessages((prev) => [...prev, {
+        id: msg.id || `msg-${Date.now()}`,
+        room_id: msg.room_id || activeRoomId,
+        user_id: msg.user_id || user.id,
+        user_name: user.full_name,
+        text: msg.text || text,
+        created_at: msg.created_at || new Date().toISOString(),
+      }]);
     } catch {
       setMessages((prev) => [...prev, { id: `msg-${Date.now()}`, room_id: activeRoomId, user_id: user.id, user_name: user.full_name, text, created_at: new Date().toISOString() }]);
     }
@@ -1305,7 +1303,7 @@ function ChatView({
         const items = data.items || data || [];
         const fetched = (Array.isArray(items) ? items : []).map((m: any) => ({
           id: m.id, room_id: m.room_id, user_id: m.user_id,
-          user_name: m.user_id === user.id ? user.full_name : "Пользователь",
+          user_name: m.user_id === user.id ? user.full_name : (m.user_name || m.sender_name || "Пользователь"),
           text: m.text, created_at: m.created_at,
         }));
         setMessages((prev) => [...prev.filter((m) => m.room_id !== roomId), ...fetched]);
@@ -1964,45 +1962,17 @@ function ParticipantDashboard({
         {loading ? <Spinner /> : (
           <>
             {tab === "program" && (
-              <div>
-                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Программа мероприятий</h1>
-                <div style={{ display: "grid", gap: 14 }}>
-                  {events.map((ev) => (
-                    <div key={ev.id} style={{ background: "white", borderRadius: 16, padding: "20px 24px", boxShadow: "0 2px 12px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)" }}>
-                      <h3 style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>{ev.title}</h3>
-                      {ev.description && <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>{ev.description}</p>}
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 12 }}>📅 {ev.start_date} — {ev.end_date}</div>
-                      <button onClick={() => register(ev.id)} style={{ padding: "9px 22px", background: regs.has(ev.id) ? "#f0fdf4" : "#16a34a", color: regs.has(ev.id) ? "#16a34a" : "white", border: regs.has(ev.id) ? "1.5px solid #bbf7d0" : "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
-                        {regs.has(ev.id) ? "✅ Вы зарегистрированы" : "Зарегистрироваться"}
-                      </button>
-                    </div>
-                  ))}
-                  {events.length === 0 && <EmptyState icon="📋" title="Нет мероприятий" description="Скоро здесь появятся новые мероприятия." />}
-                </div>
-              </div>
+              <ProgramTab
+                events={events}
+                regs={regs}
+                onRegister={register}
+                demoMode={demoMode}
+                userId={user.id}
+              />
             )}
 
             {tab === "schedule" && (
-              <div>
-                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Моё расписание</h1>
-                {demoMode ? (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {[
-                      { time: "10:00 – 10:30", title: "Угрозы безопасности 2026", loc: "📍 Зал А · Секция ИнфоБез" },
-                      { time: "10:30 – 11:00", title: "Защита данных в облаке", loc: "📍 Зал А · Секция ИнфоБез" },
-                      { time: "11:00 – 11:30", title: "Нейросети на производстве", loc: "📍 Зал Б · Секция ML" },
-                    ].map((r, i) => (
-                      <div key={i} style={{ background: "white", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)" }}>
-                        <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 4 }}>{r.time}</div>
-                        <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", marginBottom: 4 }}>{r.title}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.loc}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <RealScheduleView />
-                )}
-              </div>
+              <ScheduleTab demoMode={demoMode} regs={regs} events={events} />
             )}
 
             {tab === "chat" && <ChatView user={user} demoMode={demoMode} />}
@@ -2034,34 +2004,296 @@ function ParticipantDashboard({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// REAL SCHEDULE VIEW — загрузка расписания с бэкенда GET /api/schedule/my
+// PROGRAM TAB — мероприятия + секции + доклады + кнопка в расписание
 // ═══════════════════════════════════════════════════════════════
-function RealScheduleView() {
-  const [items, setItems] = useState<any[]>([]);
+const DEMO_SECTIONS_PROGRAM: Record<string, any[]> = {
+  "e1": [
+    {
+      id: "s1", title: "Секция ИнфоБез", location: "Зал А", format: "SEQUENTIAL",
+      reports: [
+        { id: "r1", title: "Угрозы безопасности 2026", speaker_name: "А. Иванов", start_time: "2026-03-19T10:00:00Z", end_time: "2026-03-19T10:30:00Z" },
+        { id: "r2", title: "Защита данных в облаке", speaker_name: "М. Петрова", start_time: "2026-03-19T10:30:00Z", end_time: "2026-03-19T11:00:00Z" },
+      ],
+    },
+    {
+      id: "s2", title: "Секция ML", location: "Зал Б", format: "SEQUENTIAL",
+      reports: [
+        { id: "r3", title: "Нейросети на производстве", speaker_name: "Д. Сидоров", start_time: "2026-03-19T11:00:00Z", end_time: "2026-03-19T11:30:00Z" },
+      ],
+    },
+  ],
+  "e2": [
+    {
+      id: "s3", title: "Кейс 3 — EventHub", location: "Ауд. 201", format: "SEQUENTIAL",
+      reports: [
+        { id: "r4", title: "Презентация EventHub", speaker_name: "Команда 3", start_time: "2026-03-19T18:00:00Z", end_time: "2026-03-19T18:20:00Z" },
+      ],
+    },
+  ],
+};
+
+function ProgramTab({
+  events, regs, onRegister, demoMode, userId,
+}: {
+  events: EventData[];
+  regs: Set<string>;
+  onRegister: (id: string) => void;
+  demoMode: boolean;
+  userId: string;
+}) {
+  const [expandedEv, setExpandedEv] = useState<string>("");
+  const [sections, setSections] = useState<Record<string, any[]>>({});
+  const [loadingSections, setLoadingSections] = useState<Record<string, boolean>>({});
+  // Доклады добавленные в расписание (локальный стейт)
+  const [scheduleReports, setScheduleReports] = useState<Set<string>>(new Set());
+  const [addingReport, setAddingReport] = useState<string>("");
+
+  const loadSections = async (evId: string) => {
+    if (sections[evId]) { setExpandedEv(evId === expandedEv ? "" : evId); return; }
+    setExpandedEv(evId);
+    setLoadingSections((p) => ({ ...p, [evId]: true }));
+    if (demoMode) {
+      setSections((p) => ({ ...p, [evId]: DEMO_SECTIONS_PROGRAM[evId] || [] }));
+      setLoadingSections((p) => ({ ...p, [evId]: false }));
+      return;
+    }
+    try {
+      const data = await apiFetch<any>("GET", `/api/events/${evId}/program`);
+      setSections((p) => ({ ...p, [evId]: data.sections || [] }));
+    } catch {
+      setSections((p) => ({ ...p, [evId]: [] }));
+    } finally {
+      setLoadingSections((p) => ({ ...p, [evId]: false }));
+    }
+  };
+
+  const addToSchedule = async (reportId: string) => {
+    setAddingReport(reportId);
+    if (demoMode) {
+      setScheduleReports((p) => new Set(p).add(reportId));
+      setAddingReport("");
+      return;
+    }
+    try {
+      await apiFetch("POST", `/api/schedule/reports/${reportId}`);
+      setScheduleReports((p) => new Set(p).add(reportId));
+    } catch {}
+    finally { setAddingReport(""); }
+  };
+
+  const removeFromSchedule = async (reportId: string) => {
+    if (demoMode) { setScheduleReports((p) => { const n = new Set(p); n.delete(reportId); return n; }); return; }
+    try {
+      await apiFetch("DELETE", `/api/schedule/reports/${reportId}`);
+      setScheduleReports((p) => { const n = new Set(p); n.delete(reportId); return n; });
+    } catch {}
+  };
+
+  const fmtTime = (iso?: string) => {
+    if (!iso) return "";
+    return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  return (
+    <div>
+      <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Программа мероприятий</h1>
+      <div style={{ display: "grid", gap: 14 }}>
+        {events.map((ev) => (
+          <div key={ev.id} style={{ background: "white", borderRadius: 16, border: "1.5px solid var(--border)", overflow: "hidden", boxShadow: "0 2px 12px rgba(74,89,138,0.07)" }}>
+            {/* Шапка мероприятия */}
+            <div style={{ padding: "20px 24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 4 }}>{ev.title}</h3>
+                  {ev.description && <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>{ev.description}</p>}
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>📅 {ev.start_date} — {ev.end_date}</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => onRegister(ev.id)}
+                    style={{ padding: "8px 18px", background: regs.has(ev.id) ? "#f0fdf4" : "#16a34a", color: regs.has(ev.id) ? "#16a34a" : "white", border: regs.has(ev.id) ? "1.5px solid #bbf7d0" : "none", borderRadius: 100, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                  >
+                    {regs.has(ev.id) ? "✅ Зарегистрированы" : "Зарегистрироваться"}
+                  </button>
+                  <button
+                    onClick={() => loadSections(ev.id)}
+                    style={{ padding: "8px 18px", background: "var(--bg-medium)", color: "var(--primary)", border: "1.5px solid var(--border)", borderRadius: 100, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}
+                  >
+                    {expandedEv === ev.id ? "Скрыть программу ↑" : "Смотреть программу ↓"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Секции и доклады */}
+            {expandedEv === ev.id && (
+              <div style={{ borderTop: "1px solid var(--border)", padding: "16px 24px", background: "#fafbfc" }}>
+                {loadingSections[ev.id] ? (
+                  <Spinner label="Загружаем программу..." />
+                ) : !sections[ev.id]?.length ? (
+                  <div style={{ color: "var(--text-muted)", fontSize: 13, fontWeight: 600, textAlign: "center", padding: 16 }}>
+                    Программа пока не опубликована
+                  </div>
+                ) : (
+                  sections[ev.id].map((sec: any) => (
+                    <div key={sec.id} style={{ marginBottom: 20 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary)", marginBottom: 8 }}>
+                        📌 {sec.title}
+                        {sec.location && <span style={{ color: "var(--text-muted)", fontWeight: 600, marginLeft: 8 }}>· 📍 {sec.location}</span>}
+                      </div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {(sec.reports || []).map((r: any) => (
+                          <div key={r.id} style={{ background: "white", borderRadius: 10, padding: "12px 16px", border: "1.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              {r.start_time && (
+                                <div style={{ fontSize: 11, color: "var(--primary)", fontWeight: 800, marginBottom: 2 }}>
+                                  {fmtTime(r.start_time)}{r.end_time ? ` – ${fmtTime(r.end_time)}` : ""}
+                                </div>
+                              )}
+                              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
+                              {r.speaker_name && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🎤 {r.speaker_name}</div>}
+                            </div>
+                            <button
+                              onClick={() => scheduleReports.has(r.id) ? removeFromSchedule(r.id) : addToSchedule(r.id)}
+                              disabled={addingReport === r.id}
+                              style={{
+                                padding: "7px 14px", borderRadius: 100, fontWeight: 800, fontSize: 12,
+                                cursor: addingReport === r.id ? "wait" : "pointer",
+                                fontFamily: "Nunito, sans-serif", border: "none", flexShrink: 0,
+                                background: scheduleReports.has(r.id) ? "#f0fdf4" : "var(--primary)",
+                                color: scheduleReports.has(r.id) ? "#16a34a" : "white",
+                                opacity: addingReport === r.id ? 0.6 : 1,
+                              }}
+                            >
+                              {addingReport === r.id ? "..." : scheduleReports.has(r.id) ? "✓ В расписании" : "+ В расписание"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+        {events.length === 0 && <EmptyState icon="📋" title="Нет мероприятий" description="Скоро здесь появятся новые мероприятия." />}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCHEDULE TAB — моё расписание (зарегистрированные + добавленные доклады)
+// ═══════════════════════════════════════════════════════════════
+function ScheduleTab({
+  demoMode, regs, events,
+}: {
+  demoMode: boolean;
+  regs: Set<string>;
+  events: EventData[];
+}) {
+  const [reportItems, setReportItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
+    if (demoMode) {
+      // Demo: показываем доклады из расписания
+      setReportItems([
+        { report: { id: "r1", title: "Угрозы безопасности 2026", start_time: "2026-03-19T10:00:00Z", end_time: "2026-03-19T10:30:00Z", speaker_name: "А. Иванов" }, section: { title: "Секция ИнфоБез", location: "Зал А" }, event_id: "e1" },
+        { report: { id: "r3", title: "Нейросети на производстве", start_time: "2026-03-19T11:00:00Z", end_time: "2026-03-19T11:30:00Z", speaker_name: "Д. Сидоров" }, section: { title: "Секция ML", location: "Зал Б" }, event_id: "e1" },
+      ]);
+      setLoading(false);
+      return;
+    }
     (async () => {
-      try { const data = await apiFetch<any[]>("GET", "/api/schedule/my"); setItems(data || []); } catch {}
+      try {
+        const data = await apiFetch<any[]>("GET", "/api/schedule/my");
+        setReportItems(data || []);
+      } catch { setReportItems([]); }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [demoMode]);
+
+  const removeReport = async (reportId: string) => {
+    if (demoMode) { setReportItems((p) => p.filter((i) => i.report.id !== reportId)); return; }
+    try {
+      await apiFetch("DELETE", `/api/schedule/reports/${reportId}`);
+      setReportItems((p) => p.filter((i) => i.report.id !== reportId));
+    } catch {}
+  };
+
+  const fmtTime = (iso?: string) => {
+    if (!iso) return "";
+    return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  };
+
   if (loading) return <Spinner label="Загружаем расписание..." />;
-  if (!items.length) return <EmptyState icon="📅" title="Расписание пока пусто" description="Зарегистрируйтесь на мероприятие и добавьте доклады." />;
+
+  // Зарегистрированные мероприятия
+  const registeredEvents = events.filter((e) => regs.has(e.id));
+
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {items.map((item: any, i: number) => {
-        const r = item.report; const s = item.section;
-        const st = r.start_time ? new Date(r.start_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "";
-        const et = r.end_time ? new Date(r.end_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "";
-        return (
-          <div key={i} style={{ background: "white", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)" }}>
-            {st && <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 800, marginBottom: 4 }}>{st}{et ? ` – ${et}` : ""}</div>}
-            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", marginBottom: 4 }}>{r.title}</div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>📍 {s.location || "—"} · {s.title}</div>
-            {r.speaker_name && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>🎤 {r.speaker_name}</div>}
+    <div>
+      <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Моё расписание</h1>
+
+      {/* Зарегистрированные мероприятия */}
+      {registeredEvents.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            Мероприятия ({registeredEvents.length})
           </div>
-        );
-      })}
+          <div style={{ display: "grid", gap: 8 }}>
+            {registeredEvents.map((ev) => (
+              <div key={ev.id} style={{ background: "white", borderRadius: 12, padding: "12px 18px", border: "1.5px solid #bbf7d0", display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 18 }}>✅</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{ev.title}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>📅 {ev.start_date} — {ev.end_date}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Добавленные доклады */}
+      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+        Доклады в расписании ({reportItems.length})
+      </div>
+      {reportItems.length === 0 ? (
+        <EmptyState icon="📅" title="Докладов в расписании нет" description="Перейдите в Программу, раскройте мероприятие и нажмите «+ В расписание» рядом с докладом." />
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {reportItems
+            .sort((a, b) => (a.report.start_time || "").localeCompare(b.report.start_time || ""))
+            .map((item: any) => {
+              const r = item.report; const s = item.section;
+              return (
+                <div key={r.id} style={{ background: "white", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {r.start_time && (
+                      <div style={{ fontSize: 11, color: "var(--primary)", fontWeight: 800, marginBottom: 2 }}>
+                        {fmtTime(r.start_time)}{r.end_time ? ` – ${fmtTime(r.end_time)}` : ""}
+                      </div>
+                    )}
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                      📍 {s?.location || "—"} · {s?.title}
+                      {r.speaker_name && ` · 🎤 ${r.speaker_name}`}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeReport(r.id)}
+                    style={{ padding: "6px 12px", background: "#fff1f1", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif", flexShrink: 0 }}
+                  >
+                    Убрать
+                  </button>
+                </div>
+              );
+            })}
+        </div>
+      )}
     </div>
   );
 }
