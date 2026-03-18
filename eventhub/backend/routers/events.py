@@ -117,6 +117,7 @@ class ReportOut(BaseModel):
     section_id: str
     title: str
     speaker_id: Optional[str] = None
+    speaker_name: Optional[str] = None   # резолвится при выдаче
     speaker_confirmed: bool
     presentation_format: Optional[str] = None
     start_time: Optional[datetime] = None
@@ -571,8 +572,17 @@ def create_report(
     event = db.get(Event, section.event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено для секции")
-    if event.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Только владелец мероприятия может создавать доклады")
+    is_owner = event.owner_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == event.id,
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Только владелец или куратор мероприятия может создавать доклады")
 
     report = Report(
         section_id=section_id,
@@ -660,13 +670,26 @@ def get_section_reports(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[ReportOut]:
-    """Список докладов секции."""
+    """Список докладов секции с именами спикеров."""
     section = db.get(Section, section_id)
     if not section:
         raise HTTPException(status_code=404, detail="Секция не найдена")
     stmt = select(Report).where(Report.section_id == section_id).order_by(Report.start_time)
     reports = list(db.execute(stmt).scalars().all())
-    return [ReportOut.model_validate(r, from_attributes=True) for r in reports]
+
+    # Резолвим имена спикеров одним запросом
+    speaker_ids = [r.speaker_id for r in reports if r.speaker_id]
+    speakers_map: dict = {}
+    if speaker_ids:
+        speakers = db.execute(select(User).where(User.id.in_(speaker_ids))).scalars().all()
+        speakers_map = {u.id: u.full_name for u in speakers}
+
+    result = []
+    for r in reports:
+        out = ReportOut.model_validate(r, from_attributes=True)
+        out.speaker_name = speakers_map.get(r.speaker_id) if r.speaker_id else None
+        result.append(out)
+    return result
 
 
 @reports_router.get("/my", response_model=List[ReportOut])
@@ -677,7 +700,12 @@ def my_reports(
     """Доклады, где текущий пользователь — спикер."""
     stmt = select(Report).where(Report.speaker_id == current_user.id)
     reports = list(db.execute(stmt).scalars().all())
-    return [ReportOut.model_validate(r, from_attributes=True) for r in reports]
+    result = []
+    for r in reports:
+        out = ReportOut.model_validate(r, from_attributes=True)
+        out.speaker_name = current_user.full_name  # speaker == current_user
+        result.append(out)
+    return result
 
 
 @reports_router.post("/{report_id}/speaker", response_model=ReportOut)
@@ -698,8 +726,17 @@ def assign_speaker(
     event = db.get(Event, section.event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие для доклада не найдено")
-    if event.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Только владелец мероприятия может назначать докладчиков")
+    is_owner = event.owner_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == event.id,
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Только владелец или куратор мероприятия может назначать докладчиков")
 
     target_user = db.get(User, body.user_id)
     if not target_user:
@@ -747,7 +784,9 @@ def assign_speaker(
     # B-8: автоматически добавляем спикера в чат мероприятия
     _auto_add_to_event_chat(event.id, body.user_id, "Пользователь назначен спикером доклада", db)
 
-    return ReportOut.model_validate(report, from_attributes=True)
+    out = ReportOut.model_validate(report, from_attributes=True)
+    out.speaker_name = target_user.full_name
+    return out
 
 
 # Fix #5: экранирование спецсимволов ILIKE; q="" возвращает всех пользователей (для dropdown)
@@ -869,9 +908,16 @@ def delete_report(
     event = db.get(Event, section.event_id) if section else None
 
     is_owner = event and event.owner_id == current_user.id
-    is_curator = section and section.curator_id == current_user.id
+    is_section_curator = section and section.curator_id == current_user.id
+    is_membership_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == (section.event_id if section else ""),
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None if section else False
 
-    if not is_owner and not is_curator:
+    if not is_owner and not is_section_curator and not is_membership_curator:
         raise HTTPException(status_code=403, detail="Нет прав на удаление доклада")
 
     from models import ReportComment, ReportFeedback, UserReportSchedule
@@ -901,8 +947,15 @@ def update_report(
 
     is_owner = event and event.owner_id == current_user.id
     is_speaker = report.speaker_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == (event.id if event else ""),
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None if event else False
 
-    if not is_owner and not is_speaker:
+    if not is_owner and not is_speaker and not is_curator:
         raise HTTPException(status_code=403, detail="Нет прав на редактирование доклада")
 
     for field in ("title", "description", "presentation_format", "start_time", "end_time", "speaker_confirmed"):

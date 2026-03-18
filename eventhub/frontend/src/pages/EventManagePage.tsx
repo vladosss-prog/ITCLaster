@@ -2,6 +2,14 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { eventsAPI, tasksAPI, usersAPI, reportsAPI, participantsAPI } from "../api/apiClient.ts";
 import type { Task, TaskStatus, EventData as EventItem, EventStatus, Section, User, Report } from "../api/apiClient.ts";
+
+const API_BASE = "http://localhost:8000";
+function _secFetch(method: string, path: string, body?: any) {
+  const t = localStorage.getItem("access_token") || "";
+  const headers: Record<string,string> = { "Content-Type": "application/json" };
+  if (t) headers["Authorization"] = "Bearer " + t;
+  return fetch(API_BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+}
 // -----------------------------------------------------------
 // ТИПЫ
 // -----------------------------------------------------------
@@ -418,109 +426,419 @@ const AssignUserModal = ({
 };
 
 // -----------------------------------------------------------
-// F-7: ТАБ "СЕКЦИИ И КУРАТОРЫ"
+// F-7: ТАБ "СЕКЦИИ И КУРАТОРЫ" — полный CRUD
 // -----------------------------------------------------------
 const SectionsTab = ({ eventId, demoMode }: { eventId: string; demoMode: boolean }) => {
   const [sections, setSections] = useState<Section[]>([]);
+  const [reports, setReports] = useState<Record<string, Report[]>>({}); // keyed by section_id
   const [loading, setLoading] = useState(true);
   const [assignSection, setAssignSection] = useState<string | null>(null);
+  const [assignSpeakerReport, setAssignSpeakerReport] = useState<Report | null>(null);
 
-  useEffect(() => {
+  // Модалка создания/редактирования секции
+  const [secForm, setSecForm] = useState<{ open: boolean; section?: Section }>({ open: false });
+  // Модалка создания/редактирования доклада
+  const [repForm, setRepForm] = useState<{ open: boolean; report?: Report; sectionId: string }>({ open: false, sectionId: "" });
+  // Подтверждение удаления
+  const [delSec, setDelSec] = useState<Section | null>(null);
+  const [delRep, setDelRep] = useState<Report | null>(null);
+  // После создания секции — предложить назначить куратора сразу
+  const [pendingCuratorSectionId, setPendingCuratorSectionId] = useState<string | null>(null);
+  // Кэш имён пользователей: id → full_name
+  const [usersMap, setUsersMap] = useState<Record<string, string>>({});
+
+  const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "Nunito, sans-serif", boxSizing: "border-box", outline: "none", marginBottom: 10 };
+  const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 3 };
+
+  const reload = async () => {
     if (demoMode) { setLoading(false); return; }
-    eventsAPI.getSections(eventId)
-      .then(res => setSections(res.data || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [eventId, demoMode]);
-
-  const handleAssignCurator = async (userId: string) => {
-    if (!assignSection) return;
+    setLoading(true);
     try {
-      await eventsAPI.assignCurator(eventId, { user_id: userId, section_id: assignSection });
       const res = await eventsAPI.getSections(eventId);
-      setSections(res.data || []);
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || "Не удалось назначить куратора");
-    }
-    setAssignSection(null);
+      const secs: Section[] = res.data || [];
+      setSections(secs);
+
+      // Load reports for each section in parallel
+      const recs: Record<string, Report[]> = {};
+      await Promise.all(secs.map(async (s: Section) => {
+        try {
+          const r = await _secFetch("GET", `/api/sections/${s.id}/reports`);
+          recs[s.id] = r.ok ? await r.json() : [];
+        } catch { recs[s.id] = []; }
+      }));
+      setReports(recs);
+
+      // Загружаем имена всех пользователей для резолва curator_id → имя
+      // speaker_name теперь приходит прямо из бэкенда в ReportOut
+      try {
+        const ur = await _secFetch("GET", "/api/users/search?q=");
+        if (ur.ok) {
+          const allUsers: any[] = await ur.json();
+          const map: Record<string, string> = {};
+          allUsers.forEach((u: any) => { map[u.id] = u.full_name; });
+          setUsersMap(map);
+        }
+      } catch {}
+    } catch {}
+    finally { setLoading(false); }
   };
 
-  const handleRemoveCurator = async (sectionId: string, curatorId: string) => {
+  useEffect(() => { reload(); }, [eventId, demoMode]);
+
+  // Перезагружаем данные когда вкладка браузера снова становится активной
+  useEffect(() => {
+    const handleVisibility = () => { if (document.visibilityState === "visible") reload(); };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  // ── Куратор ──
+  const handleAssignCurator = async (userId: string) => {
+    const targetSection = assignSection || pendingCuratorSectionId;
+    if (!targetSection) return;
     try {
-      await eventsAPI.removeCurator(eventId, curatorId);
-      const res = await eventsAPI.getSections(eventId);
-      setSections(res.data || []);
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || "Не удалось снять куратора");
-    }
+      const r = await _secFetch("POST", `/api/events/${eventId}/curators`, { user_id: userId, section_id: targetSection });
+      if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+      await reload();
+    } catch (e: any) { alert(e?.message || "Не удалось назначить куратора"); }
+    setAssignSection(null);
+    setPendingCuratorSectionId(null);
+  };
+
+  const handleRemoveCurator = async (curatorId: string) => {
+    try { await eventsAPI.removeCurator(eventId, curatorId); await reload(); }
+    catch (e: any) { alert(e?.response?.data?.detail || "Не удалось снять куратора"); }
+  };
+
+  // ── Секции ──
+  const handleSaveSec = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = {};
+    ["title","format","location","section_start","section_end","tech_notes"].forEach(k => { const v = fd.get(k); if (v) body[k] = String(v); });
+    try {
+      let createdSectionId: string | null = null;
+      if (secForm.section) {
+        const r = await _secFetch("PATCH", `/api/sections/${secForm.section.id}`, body);
+        if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+      } else {
+        const r = await _secFetch("POST", `/api/events/${eventId}/sections`, body);
+        if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+        const created = await r.json();
+        createdSectionId = created?.id || null;
+      }
+      setSecForm({ open: false });
+      await reload();
+      // Если создали новую секцию — предложить сразу назначить куратора
+      if (createdSectionId) {
+        setPendingCuratorSectionId(createdSectionId);
+      }
+    } catch (err: any) { alert(err?.message || "Сетевая ошибка"); }
+  };
+
+  const handleDeleteSec = async () => {
+    if (!delSec) return;
+    try {
+      const r = await _secFetch("DELETE", `/api/sections/${delSec.id}`);
+      if (!r.ok && r.status !== 204) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+      setDelSec(null); await reload();
+    } catch (e: any) { alert(e?.message || "Ошибка удаления"); }
+  };
+
+  // ── Доклады ──
+  const handleSaveRep = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = {};
+    ["title","description","presentation_format","start_time","end_time"].forEach(k => { const v = fd.get(k); if (v) body[k] = String(v); });
+    try {
+      let r: Response;
+      if (repForm.report) {
+        r = await _secFetch("PATCH", `/api/reports/${repForm.report.id}`, body);
+      } else {
+        r = await _secFetch("POST", `/api/sections/${repForm.sectionId}/reports`, body);
+      }
+      if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+      setRepForm({ open: false, sectionId: "" });
+      await reload();
+    } catch (e: any) { alert(e?.message || "Ошибка"); }
+  };
+
+  const handleDeleteRep = async () => {
+    if (!delRep) return;
+    try {
+      const r = await _secFetch("DELETE", `/api/reports/${delRep.id}`);
+      if (!r.ok && r.status !== 204) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+      setDelRep(null); await reload();
+    } catch (e: any) { alert(e?.message || "Ошибка удаления"); }
+  };
+
+  const handleAssignSpeaker = async (userId: string) => {
+    if (!assignSpeakerReport) return;
+    try {
+      const r = await _secFetch("POST", `/api/reports/${assignSpeakerReport.id}/speaker`, { user_id: userId });
+      if (!r.ok) { const err = await r.json().catch(() => ({})); alert(err?.detail || `Ошибка ${r.status}`); return; }
+      await reload();
+    } catch (e: any) { alert(e?.message || "Не удалось назначить спикера"); }
+    setAssignSpeakerReport(null);
   };
 
   if (loading) return <div style={{ textAlign: "center", padding: 40, color: "#999" }}>Загрузка секций...</div>;
 
-  if (sections.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>📂</div>
-        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>Нет секций</div>
-        <div style={{ fontSize: 14 }}>Создайте секции для мероприятия через API или панель управления.</div>
-      </div>
-    );
-  }
-
   return (
     <div>
-      <div style={{ display: "grid", gap: 14 }}>
-        {sections.map(s => (
-          <div key={s.id} style={{
-            background: "white", borderRadius: 14, padding: "18px 22px",
-            boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", marginBottom: 6 }}>{s.title}</div>
-                {s.section_start && (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>
-                    🕐 {new Date(s.section_start).toLocaleString("ru-RU")}
-                    {s.section_end && ` — ${new Date(s.section_end).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`}
-                  </div>
-                )}
-                {s.location && <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>📍 {s.location}</div>}
-                {s.format && <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>📋 {s.format}</div>}
-              </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Куратор</div>
-                {s.curator_id ? (
+      {/* Шапка с кнопкой создания */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 10 }}>
+        <h2 style={{ fontWeight: 900, margin: 0, fontSize: 18, color: "var(--primary-dark)" }}>📂 Секции и кураторы</h2>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => reload()} style={{ padding: "9px 14px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+            🔄 Обновить
+          </button>
+          {!demoMode && (
+            <button onClick={() => setSecForm({ open: true })} style={{ padding: "9px 20px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+              ✚ Новая секция
+            </button>
+          )}
+        </div>
+      </div>
+
+      {sections.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📂</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>Нет секций</div>
+          <div style={{ fontSize: 14, marginBottom: 20 }}>Создайте первую секцию для этого мероприятия</div>
+          {!demoMode && (
+            <button onClick={() => setSecForm({ open: true })} style={{ padding: "12px 28px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+              ✚ Создать секцию
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 16 }}>
+          {sections.map((s: Section) => {
+            const secReports: Report[] = reports[s.id] || [];
+            return (
+              <div key={s.id} style={{ background: "white", borderRadius: 16, border: "1.5px solid var(--border)", overflow: "hidden", boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
+                {/* Заголовок секции */}
+                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#f8fbff" }}>
                   <div>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)" }}>
-                      {s.curator_name || s.curator_id.slice(0, 8)}
-                    </span>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: "var(--primary-dark)" }}>📌 {s.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {s.location && <span>📍 {s.location}</span>}
+                      {s.format && <span>📋 {s.format}</span>}
+                      {s.section_start && <span>🕐 {new Date(s.section_start).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
+                    </div>
+                    {/* Куратор */}
+                    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>Куратор:</span>
+                      {s.curator_id ? (
+                        <>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)", padding: "2px 8px", background: "#e8f0fe", borderRadius: 100 }}>
+                            {usersMap[s.curator_id] || (s as any).curator_name || s.curator_id.slice(0, 8)}
+                          </span>
+                          {!demoMode && (
+                            <button onClick={() => handleRemoveCurator(s.curator_id!)} style={{ padding: "2px 8px", background: "#fff1f1", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer" }}>✕</button>
+                          )}
+                        </>
+                      ) : (
+                        <button onClick={() => setAssignSection(s.id)} style={{ padding: "3px 10px", background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Назначить</button>
+                      )}
+                    </div>
+                  </div>
+                  {!demoMode && (
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button onClick={() => setSecForm({ open: true, section: s })} style={{ padding: "5px 12px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>✏️ Изменить</button>
+                      <button onClick={() => setDelSec(s)} style={{ padding: "5px 12px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>🗑</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Прогресс */}
+                <div style={{ padding: "8px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1, height: 4, background: "#e2e8f0", borderRadius: 100, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${s.readiness_percent}%`, background: s.readiness_percent >= 75 ? "#16a34a" : "var(--primary)", borderRadius: 100 }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>Готовность: {s.readiness_percent}%</span>
+                </div>
+
+                {/* Доклады */}
+                <div style={{ padding: "12px 18px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#475569" }}>Доклады ({secReports.length})</span>
                     {!demoMode && (
-                      <button onClick={() => handleRemoveCurator(s.id, s.curator_id!)} style={{
-                        marginLeft: 8, padding: "2px 8px", background: "#fff1f1", color: "#ef4444",
-                        border: "1px solid #fecaca", borderRadius: 100, fontSize: 10, fontWeight: 700, cursor: "pointer",
-                      }}>✕</button>
+                      <button onClick={() => setRepForm({ open: true, sectionId: s.id })} style={{ padding: "4px 10px", background: "#ecfdf5", color: "#10b981", border: "1px solid #a7f3d0", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>+ Доклад</button>
                     )}
                   </div>
-                ) : (
-                  <button onClick={() => setAssignSection(s.id)} style={{
-                    padding: "6px 14px", background: "var(--primary)", color: "white",
-                    border: "none", borderRadius: 100, fontSize: 12, fontWeight: 800, cursor: "pointer",
-                    fontFamily: "Nunito, sans-serif",
-                  }}>Назначить</button>
-                )}
+                  {secReports.length === 0 ? (
+                    <div style={{ color: "#94a3b8", fontSize: 12, padding: "6px 0" }}>Докладов нет</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {secReports.map((r: Report) => (
+                        <div key={r.id} style={{ background: "#f8fafc", borderRadius: 10, padding: "8px 12px", border: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 800, fontSize: 13, color: "var(--primary-dark)" }}>{r.title}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+                              {r.start_time && <span>🕐 {new Date(r.start_time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>}
+                              {r.presentation_format && <span style={{ padding: "1px 6px", borderRadius: 100, background: "#e8f0fe", color: "var(--primary)", fontSize: 10, fontWeight: 800 }}>{r.presentation_format}</span>}
+                              {r.speaker_id
+                                ? <span style={{ color: r.speaker_confirmed ? "#16a34a" : "#92400e" }}>🎤 {(r as any).speaker_name || usersMap[r.speaker_id] || "Спикер"} {r.speaker_confirmed ? "✅" : "⏳"}</span>
+                                : <span style={{ color: "#dc2626" }}>🎤 Спикер не назначен</span>}
+                            </div>
+                          </div>
+                          {!demoMode && (
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button onClick={() => setAssignSpeakerReport(r)} style={{ padding: "3px 8px", background: "var(--bg-medium)", color: "var(--primary)", border: "1px solid var(--border)", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>🎤 {r.speaker_id ? "Сменить" : "Спикер"}</button>
+                              <button onClick={() => setRepForm({ open: true, report: r, sectionId: s.id })} style={{ padding: "3px 7px", background: "#f1f5f9", color: "#64748b", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer" }}>✏️</button>
+                              <button onClick={() => setDelRep(r)} style={{ padding: "3px 7px", background: "#fef2f2", color: "#dc2626", border: "none", borderRadius: 100, fontWeight: 700, fontSize: 10, cursor: "pointer" }}>🗑</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── МОДАЛКА СЕКЦИЯ ── */}
+      {secForm.open && !demoMode && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+          <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 500, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid var(--primary)", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+              <h3 style={{ fontWeight: 900, margin: 0, fontSize: 16 }}>{secForm.section ? "Редактировать секцию" : "Новая секция"}</h3>
+              <button onClick={() => setSecForm({ open: false })} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
             </div>
-            <div style={{ marginTop: 8 }}>
-              <div style={{ height: 4, background: "#e2e8f0", borderRadius: 100, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${s.readiness_percent}%`, background: s.readiness_percent >= 75 ? "#16a34a" : "var(--primary)", borderRadius: 100 }} />
+            <form onSubmit={handleSaveSec}>
+              <label style={lbl}>Название *</label>
+              <input name="title" required defaultValue={secForm.section?.title || ""} autoFocus style={inp} placeholder="Название секции" />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={lbl}>Формат</label>
+                  <select name="format" defaultValue={secForm.section?.format || ""} style={inp}>
+                    <option value="">Не выбран</option>
+                    <option value="SEQUENTIAL">Последовательный</option>
+                    <option value="ROUNDTABLE">Круглый стол</option>
+                    <option value="PANEL">Панельная дискуссия</option>
+                    <option value="WORKSHOP">Воркшоп</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Локация</label>
+                  <input name="location" defaultValue={secForm.section?.location || ""} style={inp} placeholder="Зал A..." />
+                </div>
               </div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, marginTop: 2 }}>Готовность: {s.readiness_percent}%</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div><label style={lbl}>Начало</label><input type="datetime-local" name="section_start" defaultValue={secForm.section?.section_start ? String(secForm.section.section_start).slice(0,16) : ""} style={inp} /></div>
+                <div><label style={lbl}>Конец</label><input type="datetime-local" name="section_end" defaultValue={secForm.section?.section_end ? String(secForm.section.section_end).slice(0,16) : ""} style={inp} /></div>
+              </div>
+              <label style={lbl}>Технические заметки</label>
+              <textarea name="tech_notes" defaultValue={secForm.section?.tech_notes || ""} rows={3} style={{ ...inp, resize: "vertical" }} placeholder="Оборудование, требования..." />
+              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                <button type="submit" style={{ flex: 1, padding: 11, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                  {secForm.section ? "Сохранить" : "Создать секцию"}
+                </button>
+                <button type="button" onClick={() => setSecForm({ open: false })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── МОДАЛКА ДОКЛАД ── */}
+      {repForm.open && !demoMode && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+          <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 480, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #10b981", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+              <h3 style={{ fontWeight: 900, margin: 0, fontSize: 16 }}>{repForm.report ? "Редактировать доклад" : "Новый доклад"}</h3>
+              <button onClick={() => setRepForm({ open: false, sectionId: "" })} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
+            </div>
+            <form onSubmit={handleSaveRep}>
+              <label style={lbl}>Название *</label>
+              <input name="title" required defaultValue={repForm.report?.title || ""} autoFocus style={inp} placeholder="Название доклада" />
+              <label style={lbl}>Описание</label>
+              <textarea name="description" defaultValue={repForm.report?.description || ""} rows={3} style={{ ...inp, resize: "vertical" }} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div><label style={lbl}>Начало</label><input type="datetime-local" name="start_time" defaultValue={repForm.report?.start_time ? String(repForm.report.start_time).slice(0,16) : ""} style={inp} /></div>
+                <div><label style={lbl}>Конец</label><input type="datetime-local" name="end_time" defaultValue={repForm.report?.end_time ? String(repForm.report.end_time).slice(0,16) : ""} style={inp} /></div>
+              </div>
+              <label style={lbl}>Формат</label>
+              <select name="presentation_format" defaultValue={repForm.report?.presentation_format || ""} style={inp}>
+                <option value="">Не выбран</option>
+                <option value="OFFLINE">Офлайн</option>
+                <option value="ONLINE">Онлайн</option>
+              </select>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button type="submit" style={{ flex: 1, padding: 11, background: "#10b981", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                  {repForm.report ? "Сохранить" : "Создать доклад"}
+                </button>
+                <button type="button" onClick={() => setRepForm({ open: false, sectionId: "" })} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── УДАЛИТЬ СЕКЦИЮ ── */}
+      {delSec && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
+          <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
+            <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить секцию?</h3>
+            <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>«{delSec.title}» и все её доклады будут удалены.</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={handleDeleteSec} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
+              <button onClick={() => setDelSec(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {/* ── УДАЛИТЬ ДОКЛАД ── */}
+      {delRep && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3100 }}>
+          <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #ef4444" }}>
+            <h3 style={{ fontWeight: 900, margin: "0 0 10px", color: "#991b1b" }}>🗑 Удалить доклад?</h3>
+            <p style={{ fontSize: 14, color: "#475569", marginBottom: 22 }}>«{delRep.title}» будет удалён.</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={handleDeleteRep} style={{ flex: 1, padding: 11, background: "#ef4444", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Удалить</button>
+              <button onClick={() => setDelRep(null)} style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── НАЗНАЧИТЬ КУРАТОРА ── */}
       {assignSection && (
         <AssignUserModal title="Назначить куратора" onClose={() => setAssignSection(null)} onAssign={handleAssignCurator} />
+      )}
+
+      {/* ── НАЗНАЧИТЬ КУРАТОРА НОВОЙ СЕКЦИИ ── */}
+      {pendingCuratorSectionId && !assignSection && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(13,27,62,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }}>
+          <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", borderTop: "5px solid #10b981" }}>
+            <h3 style={{ fontWeight: 900, margin: "0 0 8px", fontSize: 17, color: "var(--primary-dark)" }}>✅ Секция создана!</h3>
+            <p style={{ fontSize: 14, color: "#475569", marginBottom: 20 }}>Назначить куратора для этой секции прямо сейчас?</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => { setAssignSection(pendingCuratorSectionId); setPendingCuratorSectionId(null); }}
+                style={{ flex: 1, padding: 11, background: "var(--primary)", color: "white", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                Назначить куратора
+              </button>
+              <button
+                onClick={() => setPendingCuratorSectionId(null)}
+                style={{ flex: 1, padding: 11, background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 100, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Nunito, sans-serif" }}>
+                Пропустить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── НАЗНАЧИТЬ СПИКЕРА ── */}
+      {assignSpeakerReport && (
+        <AssignUserModal title={`Спикер: «${assignSpeakerReport.title}»`} onClose={() => setAssignSpeakerReport(null)} onAssign={handleAssignSpeaker} />
       )}
     </div>
   );
@@ -1082,7 +1400,7 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
 
       {/* СЕКЦИИ И КУРАТОРЫ */}
       {activeTab === "sections" && (
-        <SectionsTab eventId={id!} demoMode={demoMode} />
+        <SectionsTab key={`sections-${id}`} eventId={id!} demoMode={demoMode} />
       )}
 
       {/* СПИКЕРЫ */}
