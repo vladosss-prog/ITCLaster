@@ -15,6 +15,7 @@ import { ScheduleTab } from "./components/dashboard/ScheduleTab";
 import { MyReportTab } from "./components/dashboard/MyReportTab";
 import { ReportPage } from "./pages/ReportPage";
 import { Messenger } from "./components/messenger/Messenger";
+import { EventManagePage } from "./pages/EventManagePage";
 
 // -----------------------------------------------------------
 // ТИПЫ
@@ -1056,6 +1057,11 @@ export default function App() {
                 : <Navigate to="/login" />
             } />
             <Route path="*" element={<PlaceholderPage title="Страница не найдена" icon="🔍" />} />
+            <Route path="/manage/events/:id" element={
+            user?.global_role === "ORGANIZER"
+            ? <EventManagePage demoMode={demoMode} />
+            : <Navigate to="/dashboard" />
+            } />
           </Routes>
         </div>
         <SiteFooter />

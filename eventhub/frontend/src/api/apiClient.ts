@@ -219,6 +219,9 @@ export const eventsAPI = {
   // POST /api/events/{id}/curators
   assignCurator: (eventId: string, data: { user_id: string; section_id: string }) =>
     api.post(`/api/events/${eventId}/curators`, data),
+  
+  update: (id: string, data: Partial<Event>) =>
+  api.patch<Event>(`/api/events/${id}`, data),
 };
 
 export const sectionsAPI = {
