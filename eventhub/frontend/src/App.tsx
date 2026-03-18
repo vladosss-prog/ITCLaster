@@ -2004,6 +2004,7 @@ function OrganizerDashboard({
   setMemberships,
   sharedEvents,
   setSharedEvents,
+  onUserUpdate,
 }: {
   user: User;
   onLogout: () => void;
@@ -2012,6 +2013,7 @@ function OrganizerDashboard({
   setMemberships: React.Dispatch<React.SetStateAction<DemoMembership[]>>;
   sharedEvents: EventData[];
   setSharedEvents: React.Dispatch<React.SetStateAction<EventData[]>>;
+  onUserUpdate?: (u: User) => void;
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"events" | "kanban" | "calendar" | "chat" | "settings">("events");
@@ -2494,19 +2496,8 @@ function OrganizerDashboard({
             {tab === "settings" && (
               <div>
                 <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Настройки профиля</h1>
-                <div style={{ background: "white", borderRadius: 16, padding: 28, maxWidth: 440, boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
-                  {[
-                    { l: "Имя", v: user.full_name },
-                    { l: "Email", v: user.email },
-                    { l: "Роль", v: user.global_role },
-                    ...(user.organization ? [{ l: "Организация", v: user.organization }] : []),
-                  ].map((f) => (
-                    <div key={f.l} style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>{f.l}</div>
-                      <div style={{ padding: "9px 14px", background: "#f8fafc", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>{f.v}</div>
-                    </div>
-                  ))}
-                  {demoMode && <p style={{ color: "#f59e0b", fontSize: 12, fontWeight: 600 }}>⚠️ Demo — изменения не сохраняются</p>}
+                <div style={{ background: "white", borderRadius: 16, padding: 28, maxWidth: 520, boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
+                  <ProfileSettingsForm user={user} demoMode={demoMode} onSaved={(updated) => { if (onUserUpdate) onUserUpdate(updated); }} />
                 </div>
               </div>
             )}
@@ -2532,6 +2523,7 @@ function ParticipantDashboard({
   sharedEvents,
   sharedRegs,
   setSharedRegs,
+  onUserUpdate,
 }: {
   user: User;
   onLogout: () => void;
@@ -2541,6 +2533,7 @@ function ParticipantDashboard({
   sharedEvents: EventData[];
   sharedRegs: Set<string>;
   setSharedRegs: React.Dispatch<React.SetStateAction<Set<string>>>;
+  onUserUpdate?: (u: User) => void;
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"program" | "sections" | "my_report" | "kanban" | "schedule" | "questions" | "final_report" | "chat" | "settings">("program");
@@ -3586,7 +3579,7 @@ function ParticipantDashboard({
             )}
 
             {tab === "schedule" && (
-              <ScheduleTab demoMode={demoMode} regs={regs} events={events} userId={user?.id} />
+              <ScheduleTab demoMode={demoMode} regs={regs} events={events} />
             )}
 
                         {/* ═══ ВОПРОСЫ УЧАСТНИКОВ (только куратор) ═══ */}
@@ -3708,19 +3701,8 @@ function ParticipantDashboard({
             {tab === "settings" && (
               <div>
                 <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Настройки</h1>
-                <div style={{ background: "white", borderRadius: 16, padding: 28, maxWidth: 440, boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
-                  {[
-                    { l: "Имя", v: user.full_name },
-                    { l: "Email", v: user.email },
-                    { l: "Роль", v: roleLabel },
-                    ...(user.organization ? [{ l: "Организация", v: user.organization }] : []),
-                  ].map((f) => (
-                    <div key={f.l} style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>{f.l}</div>
-                      <div style={{ padding: "9px 14px", background: "#f8fafc", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>{f.v}</div>
-                    </div>
-                  ))}
-                  {demoMode && <p style={{ color: "#f59e0b", fontSize: 12, fontWeight: 600 }}>⚠️ Demo</p>}
+                <div style={{ background: "white", borderRadius: 16, padding: 28, maxWidth: 520, boxShadow: "0 2px 10px rgba(74,89,138,0.07)" }}>
+                  <ProfileSettingsForm user={user} demoMode={demoMode} onSaved={(updated) => { if (onUserUpdate) onUserUpdate(updated); }} />
                 </div>
               </div>
             )}
@@ -3731,6 +3713,137 @@ function ParticipantDashboard({
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// PROFILE SETTINGS FORM — редактирование профиля (PATCH /api/auth/me)
+// ═══════════════════════════════════════════════════════════════
+function ProfileSettingsForm({ user, demoMode, onSaved }: { user: User; demoMode: boolean; onSaved: (u: User) => void }) {
+  const [fullName, setFullName] = useState(user.full_name || "");
+  const [organization, setOrganization] = useState((user as any).organization || "");
+  const [bio, setBio] = useState((user as any).bio || "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSave = async () => {
+    if (!fullName.trim()) { setError("Имя не может быть пустым"); return; }
+    setSaving(true); setError(""); setSaved(false);
+    if (demoMode) {
+      setSaving(false); setSaved(true);
+      onSaved({ ...user, full_name: fullName.trim() } as any);
+      setTimeout(() => setSaved(false), 3000);
+      return;
+    }
+    try {
+      const updated = await apiFetch<User>("PATCH", "/api/auth/me", {
+        full_name: fullName.trim(),
+        organization: organization.trim() || null,
+        bio: bio.trim() || null,
+      });
+      onSaved(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) {
+      setError(e?.message || "Не удалось сохранить");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fieldStyle: React.CSSProperties = {
+    width: "100%", padding: "10px 14px", borderRadius: 10,
+    border: "1.5px solid #e2e8f0", fontSize: 14,
+    fontFamily: "Nunito, sans-serif", boxSizing: "border-box",
+    outline: "none", background: "#f8fafc", color: "#1e293b",
+    display: "block", WebkitTextFillColor: "#1e293b",
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 800, color: "#94a3b8",
+    textTransform: "uppercase", letterSpacing: "0.5px",
+    display: "block", marginBottom: 6,
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 18, maxWidth: 480 }}>
+      <div>
+        <label style={labelStyle}>Имя и фамилия</label>
+        <input
+          type="text"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          style={fieldStyle}
+          placeholder="Иван Иванов"
+        />
+      </div>
+
+      <div>
+        <label style={labelStyle}>Организация</label>
+        <input
+          type="text"
+          value={organization}
+          onChange={(e) => setOrganization(e.target.value)}
+          style={fieldStyle}
+          placeholder="ОмГТУ, ИТ-Кластер Сибири..."
+        />
+      </div>
+
+      <div>
+        <label style={labelStyle}>О себе</label>
+        <textarea
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
+          rows={4}
+          style={{ ...fieldStyle, resize: "vertical", lineHeight: 1.6 }}
+          placeholder="Кратко о себе, должность, интересы..."
+        />
+      </div>
+
+      <div style={{ padding: "12px 16px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", marginBottom: 8 }}>
+          Нередактируемые данные
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            <span style={{ fontWeight: 700 }}>Email: </span>{user.email}
+          </div>
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            <span style={{ fontWeight: 700 }}>Роль: </span>{user.global_role}
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ color: "#dc2626", fontSize: 13, fontWeight: 600, padding: "10px 14px", background: "#fef2f2", borderRadius: 8 }}>
+          {error}
+        </div>
+      )}
+      {saved && (
+        <div style={{ color: "#16a34a", fontSize: 13, fontWeight: 700, padding: "10px 14px", background: "#f0fdf4", borderRadius: 8 }}>
+          ✅ Профиль сохранён!
+        </div>
+      )}
+      {demoMode && (
+        <div style={{ color: "#92400e", fontSize: 12, fontWeight: 600, padding: "8px 12px", background: "#fffbeb", borderRadius: 8 }}>
+          ⚠️ Demo — изменения не сохранятся в БД
+        </div>
+      )}
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          padding: "12px 28px", background: "var(--primary)", color: "white",
+          border: "none", borderRadius: 100, fontWeight: 800, fontSize: 14,
+          cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
+          fontFamily: "Nunito, sans-serif", width: "fit-content",
+        }}
+      >
+        {saving ? "Сохранение..." : "💾 Сохранить профиль"}
+      </button>
+    </div>
+  );
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // PROGRAM TAB — мероприятия + секции + доклады + кнопка в расписание
@@ -3823,16 +3936,9 @@ function ProgramTab({
     } catch {}
   };
 
-  const submitRating = async (reportId: string, rating: number, eventId?: string) => {
+  const submitRating = async (reportId: string, rating: number) => {
     setRatings(prev => ({ ...prev, [reportId]: rating }));
-    if (demoMode) return;
-    try {
-      await apiFetch("POST", `/api/reports/${reportId}/feedback`, { rating });
-    } catch (e: any) {
-      if ((e?.message || "").includes("зарегистрируйтесь") && eventId) {
-        try { await apiFetch("POST", `/api/events/${eventId}/register`); await apiFetch("POST", `/api/reports/${reportId}/feedback`, { rating }); } catch {}
-      }
-    }
+    if (!demoMode) { try { await apiFetch("POST", `/api/reports/${reportId}/feedback`, { rating }); } catch {} }
   };
 
   const loadComments = async (reportId: string) => {
@@ -3848,7 +3954,7 @@ function ProgramTab({
     setLoadingComments(prev => { const n = new Set(prev); n.delete(reportId); return n; });
   };
 
-  const submitComment = async (reportId: string, eventId?: string) => {
+  const submitComment = async (reportId: string) => {
     const text = (commentText[reportId] || "").trim();
     if (!text) return;
     setSubmittingComment(reportId);
@@ -3859,18 +3965,7 @@ function ProgramTab({
       try {
         const saved = await apiFetch<any>("POST", `/api/reports/${reportId}/comments`, { text });
         setComments(prev => ({ ...prev, [reportId]: [...(prev[reportId] || []).filter((c: any) => c.id !== tmp.id), saved] }));
-      } catch (e: any) {
-        // Убираем оптимистичный tmp
-        setComments(prev => ({ ...prev, [reportId]: (prev[reportId] || []).filter((c: any) => c.id !== tmp.id) }));
-        if ((e?.message || "").includes("зарегистрируйтесь") && eventId) {
-          // Авторегистрация + повтор
-          try {
-            await apiFetch("POST", `/api/events/${eventId}/register`);
-            const saved = await apiFetch<any>("POST", `/api/reports/${reportId}/comments`, { text });
-            setComments(prev => ({ ...prev, [reportId]: [...(prev[reportId] || []), saved] }));
-          } catch {}
-        }
-      }
+      } catch {}
     }
     setSubmittingComment("");
   };
@@ -3949,7 +4044,7 @@ function ProgramTab({
                                 <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
                                   <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 3 }}>Оценка:</span>
                                   {[1,2,3,4,5].map(star => (
-                                    <span key={star} onClick={() => submitRating(r.id, star, ev.id)} style={{ cursor: "pointer", fontSize: 16, color: star <= myRating ? "#f59e0b" : "#e2e8f0", transition: "color 0.1s", userSelect: "none" }}>★</span>
+                                    <span key={star} onClick={() => submitRating(r.id, star)} style={{ cursor: "pointer", fontSize: 16, color: star <= myRating ? "#f59e0b" : "#e2e8f0", transition: "color 0.1s", userSelect: "none" }}>★</span>
                                   ))}
                                 </div>
                               </div>
@@ -3977,9 +4072,9 @@ function ProgramTab({
                                   </div>
                                 ))}
                                 <div style={{ display: "flex", gap: 8 }}>
-                                  <input type="text" placeholder="Задать вопрос по докладу..." value={commentText[r.id] || ""} onChange={e => setCommentText(prev => ({ ...prev, [r.id]: e.target.value }))} onKeyDown={e => e.key === "Enter" && submitComment(r.id, ev.id)}
+                                  <input type="text" placeholder="Задать вопрос по докладу..." value={commentText[r.id] || ""} onChange={e => setCommentText(prev => ({ ...prev, [r.id]: e.target.value }))} onKeyDown={e => e.key === "Enter" && submitComment(r.id)}
                                     style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none" }} />
-                                  <button onClick={() => submitComment(r.id, ev.id)} disabled={submittingComment === r.id || !(commentText[r.id]||"").trim()}
+                                  <button onClick={() => submitComment(r.id)} disabled={submittingComment === r.id || !(commentText[r.id]||"").trim()}
                                     style={{ padding: "8px 14px", background: "var(--primary)", color: "white", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif", opacity: (submittingComment === r.id || !(commentText[r.id]||"").trim()) ? 0.5 : 1 }}>
                                     Отправить
                                   </button>
@@ -4007,24 +4102,18 @@ function ProgramTab({
 // SCHEDULE TAB — моё расписание (зарегистрированные + добавленные доклады)
 // ═══════════════════════════════════════════════════════════════
 function ScheduleTab({
-  demoMode, regs, events, userId,
+  demoMode, regs, events,
 }: {
   demoMode: boolean;
   regs: Set<string>;
   events: EventData[];
-  userId?: string;
 }) {
   const [reportItems, setReportItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [ratings, setRatings] = useState<Record<string, number>>({});
-  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
-  const [comments, setComments] = useState<Record<string, any[]>>({});
-  const [commentText, setCommentText] = useState<Record<string, string>>({});
-  const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
-  const [submittingComment, setSubmittingComment] = useState<string>("");
 
   useEffect(() => {
     if (demoMode) {
+      // Demo: показываем доклады из расписания
       setReportItems([
         { report: { id: "r1", title: "Угрозы безопасности 2026", start_time: "2026-03-19T10:00:00Z", end_time: "2026-03-19T10:30:00Z", speaker_name: "А. Иванов" }, section: { title: "Секция ИнфоБез", location: "Зал А" }, event_id: "e1" },
         { report: { id: "r3", title: "Нейросети на производстве", start_time: "2026-03-19T11:00:00Z", end_time: "2026-03-19T11:30:00Z", speaker_name: "Д. Сидоров" }, section: { title: "Секция ML", location: "Зал Б" }, event_id: "e1" },
@@ -4042,60 +4131,11 @@ function ScheduleTab({
   }, [demoMode]);
 
   const removeReport = async (reportId: string) => {
-    if (demoMode) { setReportItems(p => p.filter(i => i.report.id !== reportId)); return; }
-    try { await apiFetch("DELETE", `/api/schedule/reports/${reportId}`); setReportItems(p => p.filter(i => i.report.id !== reportId)); } catch {}
-  };
-
-  const submitRating = async (reportId: string, rating: number, eventId?: string) => {
-    setRatings(prev => ({ ...prev, [reportId]: rating }));
-    if (demoMode) return;
+    if (demoMode) { setReportItems((p) => p.filter((i) => i.report.id !== reportId)); return; }
     try {
-      await apiFetch("POST", `/api/reports/${reportId}/feedback`, { rating });
-    } catch (e: any) {
-      if ((e?.message || "").includes("зарегистрируйтесь") && eventId) {
-        try { await apiFetch("POST", `/api/events/${eventId}/register`); await apiFetch("POST", `/api/reports/${reportId}/feedback`, { rating }); } catch {}
-      }
-    }
-  };
-
-  const toggleComments = async (reportId: string) => {
-    const isExp = expandedComments.has(reportId);
-    if (isExp) { setExpandedComments(prev => { const n = new Set(prev); n.delete(reportId); return n; }); return; }
-    setExpandedComments(prev => new Set(prev).add(reportId));
-    if (comments[reportId] !== undefined) return;
-    setLoadingComments(prev => new Set(prev).add(reportId));
-    if (!demoMode) {
-      try {
-        const d = await apiFetch<any[]>("GET", `/api/reports/${reportId}/comments`);
-        setComments(prev => ({ ...prev, [reportId]: d || [] }));
-      } catch { setComments(prev => ({ ...prev, [reportId]: [] })); }
-    } else { setComments(prev => ({ ...prev, [reportId]: [] })); }
-    setLoadingComments(prev => { const n = new Set(prev); n.delete(reportId); return n; });
-  };
-
-  const submitComment = async (reportId: string, eventId?: string) => {
-    const text = (commentText[reportId] || "").trim();
-    if (!text) return;
-    setSubmittingComment(reportId);
-    const tmp = { id: `tmp-${Date.now()}`, report_id: reportId, author_id: userId || "", author_name: "Вы", text, created_at: new Date().toISOString() };
-    setComments(prev => ({ ...prev, [reportId]: [...(prev[reportId] || []), tmp] }));
-    setCommentText(prev => ({ ...prev, [reportId]: "" }));
-    if (!demoMode) {
-      try {
-        const saved = await apiFetch<any>("POST", `/api/reports/${reportId}/comments`, { text });
-        setComments(prev => ({ ...prev, [reportId]: [...(prev[reportId] || []).filter((c: any) => c.id !== tmp.id), saved] }));
-      } catch (e: any) {
-        setComments(prev => ({ ...prev, [reportId]: (prev[reportId] || []).filter((c: any) => c.id !== tmp.id) }));
-        if ((e?.message || "").includes("зарегистрируйтесь") && eventId) {
-          try {
-            await apiFetch("POST", `/api/events/${eventId}/register`);
-            const saved = await apiFetch<any>("POST", `/api/reports/${reportId}/comments`, { text });
-            setComments(prev => ({ ...prev, [reportId]: [...(prev[reportId] || []), saved] }));
-          } catch {}
-        }
-      }
-    }
-    setSubmittingComment("");
+      await apiFetch("DELETE", `/api/schedule/reports/${reportId}`);
+      setReportItems((p) => p.filter((i) => i.report.id !== reportId));
+    } catch {}
   };
 
   const fmtTime = (iso?: string) => {
@@ -4105,19 +4145,21 @@ function ScheduleTab({
 
   if (loading) return <Spinner label="Загружаем расписание..." />;
 
-  const registeredEvents = events.filter(e => regs.has(e.id));
+  // Зарегистрированные мероприятия
+  const registeredEvents = events.filter((e) => regs.has(e.id));
 
   return (
     <div>
       <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 20 }}>Моё расписание</h1>
 
+      {/* Зарегистрированные мероприятия */}
       {registeredEvents.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
             Мероприятия ({registeredEvents.length})
           </div>
           <div style={{ display: "grid", gap: 8 }}>
-            {registeredEvents.map(ev => (
+            {registeredEvents.map((ev) => (
               <div key={ev.id} style={{ background: "white", borderRadius: 12, padding: "12px 18px", border: "1.5px solid #bbf7d0", display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontSize: 18 }}>✅</span>
                 <div>
@@ -4130,10 +4172,10 @@ function ScheduleTab({
         </div>
       )}
 
+      {/* Добавленные доклады */}
       <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
         Доклады в расписании ({reportItems.length})
       </div>
-
       {reportItems.length === 0 ? (
         <EmptyState icon="📅" title="Докладов в расписании нет" description="Перейдите в Программу, раскройте мероприятие и нажмите «+ В расписание» рядом с докладом." />
       ) : (
@@ -4141,82 +4183,27 @@ function ScheduleTab({
           {reportItems
             .sort((a, b) => (a.report.start_time || "").localeCompare(b.report.start_time || ""))
             .map((item: any) => {
-              const r = item.report;
-              const s = item.section;
-              const isExp = expandedComments.has(r.id);
-              const repComments = comments[r.id] || [];
-              const myRating = ratings[r.id] || 0;
+              const r = item.report; const s = item.section;
               return (
-                <div key={r.id} style={{ background: "white", borderRadius: 14, boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)", overflow: "hidden" }}>
-                  {/* Основная строка */}
-                  <div style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {r.start_time && (
-                        <div style={{ fontSize: 11, color: "var(--primary)", fontWeight: 800, marginBottom: 2 }}>
-                          {fmtTime(r.start_time)}{r.end_time ? ` – ${fmtTime(r.end_time)}` : ""}
-                        </div>
-                      )}
-                      <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                        📍 {s?.location || "—"} · {s?.title}
-                        {r.speaker_name && ` · 🎤 ${r.speaker_name}`}
+                <div key={r.id} style={{ background: "white", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 10px rgba(74,89,138,0.07)", border: "1.5px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {r.start_time && (
+                      <div style={{ fontSize: 11, color: "var(--primary)", fontWeight: 800, marginBottom: 2 }}>
+                        {fmtTime(r.start_time)}{r.end_time ? ` – ${fmtTime(r.end_time)}` : ""}
                       </div>
-                      {/* Звёздочки */}
-                      <div style={{ display: "flex", gap: 2, marginTop: 6, alignItems: "center" }}>
-                        <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 3 }}>Оценка:</span>
-                        {[1,2,3,4,5].map(star => (
-                          <span key={star} onClick={() => submitRating(r.id, star, item.event_id)}
-                            style={{ cursor: "pointer", fontSize: 18, color: star <= myRating ? "#f59e0b" : "#e2e8f0", transition: "color 0.1s", userSelect: "none" }}>★</span>
-                        ))}
-                        {myRating > 0 && <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, marginLeft: 4 }}>{myRating}/5</span>}
-                      </div>
+                    )}
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "var(--primary-dark)" }}>{r.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                      📍 {s?.location || "—"} · {s?.title}
+                      {r.speaker_name && ` · 🎤 ${r.speaker_name}`}
                     </div>
-                    <button onClick={() => removeReport(r.id)}
-                      style={{ padding: "5px 10px", background: "#fff1f1", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif", flexShrink: 0 }}>
-                      Убрать
-                    </button>
                   </div>
-
-                  {/* Кнопка вопросов */}
-                  <div style={{ borderTop: "1px solid #f1f5f9", padding: "6px 18px" }}>
-                    <button onClick={() => toggleComments(r.id)}
-                      style={{ background: "none", border: "none", fontSize: 12, color: "var(--primary)", fontWeight: 700, cursor: "pointer", padding: "3px 0", fontFamily: "Nunito, sans-serif" }}>
-                      {loadingComments.has(r.id) ? "Загрузка..." : isExp ? `💬 Скрыть вопросы (${repComments.length})` : `💬 Вопросы${repComments.length > 0 ? ` (${repComments.length})` : ""}`}
-                    </button>
-                  </div>
-
-                  {/* Блок вопросов */}
-                  {isExp && (
-                    <div style={{ borderTop: "1px solid #f1f5f9", padding: "12px 18px", background: "#fafbfc" }}>
-                      {repComments.map((c: any) => (
-                        <div key={c.id} style={{ background: "white", borderRadius: 8, padding: "8px 12px", border: "1px solid var(--border)", marginBottom: 8 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                            <span style={{ fontWeight: 700, fontSize: 12, color: "var(--primary-dark)" }}>{c.author_name || "Участник"}</span>
-                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{new Date(c.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-                          </div>
-                          <div style={{ fontSize: 13, color: "#334155" }}>{c.text}</div>
-                          {c.answer_text && (
-                            <div style={{ marginTop: 6, padding: "6px 10px", background: "#eef6ff", borderRadius: 6, borderLeft: "3px solid var(--primary)" }}>
-                              <div style={{ fontSize: 10, fontWeight: 800, color: "var(--primary)", marginBottom: 2 }}>Ответ {c.answer_by_name ? `· ${c.answer_by_name}` : ""}</div>
-                              <div style={{ fontSize: 12, color: "#334155" }}>{c.answer_text}</div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <input type="text" placeholder="Задать вопрос..."
-                          value={commentText[r.id] || ""}
-                          onChange={e => setCommentText(prev => ({ ...prev, [r.id]: e.target.value }))}
-                          onKeyDown={e => e.key === "Enter" && submitComment(r.id, item.event_id)}
-                          style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: "1.5px solid var(--border)", fontSize: 12, fontFamily: "Nunito, sans-serif", outline: "none" }} />
-                        <button onClick={() => submitComment(r.id, item.event_id)}
-                          disabled={submittingComment === r.id || !(commentText[r.id]||"").trim()}
-                          style={{ padding: "7px 12px", background: "var(--primary)", color: "white", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "Nunito, sans-serif", opacity: (submittingComment === r.id || !(commentText[r.id]||"").trim()) ? 0.5 : 1 }}>
-                          Отправить
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <button
+                    onClick={() => removeReport(r.id)}
+                    style={{ padding: "6px 12px", background: "#fff1f1", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 100, fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "Nunito, sans-serif", flexShrink: 0 }}
+                  >
+                    Убрать
+                  </button>
                 </div>
               );
             })}
@@ -4226,7 +4213,9 @@ function ScheduleTab({
   );
 }
 
-
+// ═══════════════════════════════════════════════════════════════
+// APP ROOT — роутинг
+// ═══════════════════════════════════════════════════════════════
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
   const [demoMode, setDemoMode] = useState(false);
@@ -4404,9 +4393,9 @@ function AppContent() {
         element={
           user ? (
             user.global_role === "ORGANIZER" ? (
-              <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} sharedEvents={sharedEvents} setSharedEvents={setSharedEvents} />
+              <OrganizerDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} sharedEvents={sharedEvents} setSharedEvents={setSharedEvents} onUserUpdate={setUser} />
             ) : (
-              <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} sharedEvents={sharedEvents} sharedRegs={sharedRegs} setSharedRegs={setSharedRegs} />
+              <ParticipantDashboard user={user} onLogout={handleLogout} demoMode={demoMode} memberships={memberships} setMemberships={setMemberships} sharedEvents={sharedEvents} sharedRegs={sharedRegs} setSharedRegs={setSharedRegs} onUserUpdate={setUser} />
             )
           ) : (
             <Navigate to="/login" />
