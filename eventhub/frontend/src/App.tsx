@@ -157,6 +157,7 @@ export function EmptyState({
 // ═══════════════════════════════════════════════════════════════
 function TopBar({ user, onLogout, variant = "default" }: { user: User | null; onLogout: () => void; variant?: "landing" | "default" }) {
   const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = React.useState(false);
   return (
     <div className={`landing-topbar${variant === "landing" ? " on-landing" : " on-dashboard"}`}>
       <div className="landing-nav-pill">
@@ -185,7 +186,28 @@ function TopBar({ user, onLogout, variant = "default" }: { user: User | null; on
             </svg>
           </div>
         )}
+        {/* Бургер — только на мобиле */}
+        <button
+          className="topbar-burger"
+          onClick={() => setMenuOpen(!menuOpen)}
+          aria-label="Меню"
+        >
+          <span /><span /><span />
+        </button>
       </div>
+      {/* Мобильное выпадающее меню */}
+      {menuOpen && (
+        <div className="topbar-mobile-menu" onClick={() => setMenuOpen(false)}>
+          <a onClick={() => navigate("/")}>О Кластере</a>
+          <a onClick={() => navigate("/events")}>Мероприятия</a>
+          {user && <a onClick={() => navigate("/dashboard")}>Личный кабинет</a>}
+          <a onClick={() => navigate("/events")}>Партнёры</a>
+          {user
+            ? <button onClick={() => { onLogout(); setMenuOpen(false); }}>Выйти</button>
+            : <button onClick={() => navigate("/login")}>Войти</button>
+          }
+        </div>
+      )}
     </div>
   );
 }

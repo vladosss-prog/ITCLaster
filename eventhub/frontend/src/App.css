@@ -1429,3 +1429,25 @@ border: 3px solid #FFFFFF;
 .cal-dot { font-size: 9px; font-weight: 700; padding: 2px 4px; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-nav-btn { padding: 8px 16px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Nunito', sans-serif; color: var(--primary-dark); }
 .cal-nav-btn:hover { background: #e2e8f0; }
+
+/* ── EventManagePage Канбан ── */
+.em-kanban-board {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.em-kanban-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .em-kanban-board {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .em-kanban-col {
+    width: 100%;
+  }
+}

@@ -854,3 +854,119 @@ border: 3px solid #FFFFFF;
   max-width: none !important;
   box-sizing: border-box;
 }
+
+/* ════════════════════════════════════════════════════════════
+   LANDING MOBILE — дополнение к существующему адаптиву
+   ════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* ── Навбар ── */
+  .landing-nav {
+    left: 8px !important;
+    right: 8px !important;
+    top: 8px !important;
+    height: auto !important;
+    padding: 12px 16px !important;
+    border-radius: 20px !important;
+  }
+  .landing-nav-links {
+    display: none !important; /* бургер меню не делаем — скрываем */
+  }
+  .landing-nav-logo-text {
+    font-size: 14px;
+  }
+  .landing-nav-logo-img {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* ── Hero ── */
+  .landing-hero-inner {
+    padding-top: 100px !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+    padding-bottom: 40px !important;
+  }
+  .landing-hero-title {
+    font-size: clamp(28px, 8vw, 52px) !important;
+  }
+  .landing-hero-subtitle {
+    font-size: clamp(14px, 4vw, 20px) !important;
+  }
+  .landing-hero-photo { display: none !important; }
+  .landing-hero-asterisk-1 { display: none; }
+
+  /* ── О Кластере ── */
+  .landing-about {
+    padding: 40px 20px 60px !important;
+    flex-direction: column;
+  }
+  .landing-about-asterisk { display: none !important; }
+  .landing-about-photo { display: none !important; }
+  .landing-facts-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px;
+  }
+  .landing-fact-card { min-height: 120px; }
+  .landing-fact-number { font-size: clamp(28px, 7vw, 48px) !important; }
+  .landing-about-title { font-size: clamp(32px, 8vw, 60px); }
+  .landing-about-text { font-size: 14px; }
+
+  /* ── Мероприятия ── */
+  .landing-events { padding-left: 12px !important; padding-right: 12px !important; }
+  .landing-events-title { font-size: clamp(28px, 8vw, 60px); margin-left: 12px !important; }
+  .landing-events-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+  }
+  .landing-events-container { margin: 0 12px !important; }
+  .landing-events-asterisk { display: none !important; }
+  .landing-show-more {
+    margin: 20px auto;
+    font-size: 16px !important;
+    padding: 14px 40px !important;
+  }
+
+  /* ── Новости ── */
+  .landing-news { padding-left: 12px !important; padding-right: 12px !important; }
+  .landing-news-title { font-size: clamp(28px, 8vw, 60px); margin-left: 12px !important; }
+  .landing-news-grid {
+    grid-template-columns: 1fr !important;
+    margin: 0 12px !important;
+  }
+  .landing-news-card { flex-direction: column; height: auto !important; }
+  .landing-news-photo { width: 100% !important; height: 180px !important; }
+  .landing-news-divider { display: none; }
+  .landing-news-asterisk { display: none !important; }
+
+  /* ── Партнёры ── */
+  .landing-partners-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .landing-partners-asterisk { display: none !important; }
+  .landing-partners-title { font-size: clamp(28px, 8vw, 60px); }
+
+  /* ── Контакты ── */
+  .landing-contacts { padding: 0 16px 40px !important; }
+  .landing-contacts-inner { flex-direction: column !important; gap: 20px; }
+  .landing-contacts-card { padding: 28px 20px !important; }
+  .landing-qr-box { width: 80px !important; height: 80px !important; }
+
+  /* ── Scroll snap на мобиле — отключаем (неудобно) ── */
+  html { scroll-snap-type: none !important; }
+  .landing-hero,
+  .landing-about,
+  .landing-events,
+  .landing-news,
+  .landing-partners,
+  .landing-contacts {
+    scroll-snap-align: none !important;
+    scroll-snap-stop: normal !important;
+    min-height: auto !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-facts-grid { grid-template-columns: 1fr !important; }
+  .landing-partners-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}

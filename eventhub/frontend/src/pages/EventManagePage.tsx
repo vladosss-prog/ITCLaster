@@ -1060,12 +1060,11 @@ const EventKanban = ({
       </div>
 
       {/* Колонки */}
-      <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8 }}>
+      <div className="em-kanban-board" style={{ display: "flex", gap: 16, paddingBottom: 8 }}>
         {columns.map(col => {
           const colTasks = tasks.filter(t => t.status === col.id);
           return (
-            <div key={col.id} style={{
-              minWidth: 280, maxWidth: 320, flex: "0 0 auto",
+            <div key={col.id} className="em-kanban-col" style={{
               background: col.bg, borderRadius: 16, padding: 16,
               border: `1.5px solid ${col.color}22`,
             }}>
