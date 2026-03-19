@@ -362,3 +362,4 @@ async def websocket_chat(room_id: str, websocket: WebSocket, db: Session = Depen
         except Exception:
             pass
 
+
