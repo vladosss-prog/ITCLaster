@@ -809,12 +809,12 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
         <div className="landing-hero-photo"><img src="/robot-hand.png" alt="" /></div>
 
         {/* Декоративная звёздочка — снимок экрана */}
-        <div className="landing-hero-asterisk-1">Снимок экрана</div>
+        <div className="landing-hero-asterisk-1"><img src="/asterics-1.png" alt="" /></div>
       </section>
 
       {/* ═══ О КЛАСТЕРЕ ═══ */}
       <section className="landing-about" id="about">
-        <div className="landing-about-asterisk">Снимок экрана</div>
+        <div className="landing-about-asterisk"><img src="/asterics.png" alt="" /></div>
         <h2 className="landing-about-title">О Кластере</h2>
 
         <div className="landing-facts-grid">
@@ -830,12 +830,12 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
         </div>
 
         {/* Место для фото */}
-        <div className="landing-about-photo">Снимок экрана</div>
+        <div className="landing-about-photo"></div>
       </section>
 
       {/* ═══ МЕРОПРИЯТИЯ ═══ */}
       <section className="landing-events" id="events">
-        <div className="landing-events-asterisk">Снимок экрана</div>
+        <div className="landing-events-asterisk"></div>
         <h2 className="landing-events-title">Мероприятия</h2>
 
         <div className="landing-events-container">
@@ -846,7 +846,7 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
                   <span>{ev.badge}</span>
                 </div>
                 {/* Место для фото мероприятия */}
-                <div className="landing-event-photo">Снимок экрана</div>
+                <div className="landing-event-photo"></div>
                 <div className="landing-event-name">{ev.name}</div>
                 <div className="landing-event-date">{ev.date}</div>
                 <div className="landing-event-location">{ev.location}</div>
@@ -870,14 +870,14 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
 
       {/* ═══ НОВОСТИ ═══ */}
       <section className="landing-news" id="news">
-        <div className="landing-news-asterisk">Снимок экрана</div>
+        <div className="landing-news-asterisk"></div>
         <h2 className="landing-news-title">Новости</h2>
 
         <div className="landing-news-grid">
           {LANDING_NEWS.map(n => (
             <div className="landing-news-card" key={n.id}>
               {/* Место для фото новости */}
-              <div className="landing-news-photo">Снимок экрана</div>
+              <div className="landing-news-photo"></div>
               <div className="landing-news-divider"/>
               <div className="landing-news-content">
                 <div className="landing-news-date">{n.date}</div>
@@ -895,7 +895,7 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
 
       {/* ═══ ПАРТНЁРЫ ═══ */}
       <section className="landing-partners" id="partners">
-        <div className="landing-partners-asterisk">Снимок экрана</div>
+        <div className="landing-partners-asterisk"></div>
         <h2 className="landing-partners-title">Наши партнеры</h2>
 
         <div className="landing-partners-grid">
