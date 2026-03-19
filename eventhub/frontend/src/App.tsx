@@ -807,7 +807,7 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
         </div>
 
         {/* Место для фото справа */}
-        <div className="landing-hero-photo">Снимок экрана</div>
+        <div className="landing-hero-photo"><img src="/robot-hand.png" alt="" /></div>
 
         {/* Декоративная звёздочка — снимок экрана */}
         <div className="landing-hero-asterisk-1">Снимок экрана</div>
@@ -950,187 +950,171 @@ function AuthPage({ onLogin, onRegister, loading, error }: {
   const [isRegister, setIsRegister] = useState(() => new URLSearchParams(window.location.search).has("register"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const navigate = useNavigate();
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); isRegister ? onRegister(email, password, fullName) : onLogin(email, password); };
-  const switchMode = () => { setIsRegister(!isRegister); setEmail(""); setPassword(""); setFullName(""); };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isRegister) {
+      onRegister(email, password, `${firstName} ${lastName}`.trim() || firstName);
+    } else {
+      onLogin(email, password);
+    }
+  };
+
+  const switchMode = () => {
+    setIsRegister(!isRegister);
+    setEmail(""); setPassword(""); setFirstName(""); setLastName("");
+  };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div
-            style={{ fontSize: 36, marginBottom: 8, cursor: "pointer" }}
-            onClick={() => navigate("/")}
-          >
-            🚀
+    <div className="auth-page-wrap">
+      {/* Кнопка назад */}
+      <button className="auth-back-btn" onClick={() => navigate("/")}>
+        ← На главную
+      </button>
+
+      {/* Карточка */}
+      <div className={`auth-wide-card${isRegister ? " register-mode" : ""}`}>
+
+        {/* Левая тёмная панель с роботом */}
+        <div className="auth-robot-panel">
+          <div className="auth-robot-inner">
+            {/* Замените на: <img src="/robot-hand.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0,borderRadius:28}} /> */}
+            <span style={{ fontSize: 80, position: "relative", zIndex: 1 }}>🤖</span>
+            <div className="auth-robot-shine" />
           </div>
-          <h1
-            style={{
-              fontWeight: 900,
-              fontSize: 24,
-              color: "var(--primary-dark)",
-              marginBottom: 4,
-            }}
-          >
-            EventHub
-          </h1>
-          <p style={{ color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
-            {isRegister ? "Регистрация" : "Вход в платформу"}
-          </p>
         </div>
 
-        {error && (
-          <div
-            style={{
-              background: "#fef2f2",
-              color: "#dc2626",
-              padding: "10px 14px",
-              borderRadius: 8,
-              marginBottom: 16,
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {/* Правая форма */}
+        <div className="auth-form-panel">
+          <h1 className="auth-heading">
+            {isRegister ? "Создать аккаунт" : "Добро пожаловать!"}
+          </h1>
 
-        <form
-          onSubmit={handleSubmit}
-        >
-          {isRegister && (
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 5 }}>ФИО</label>
-              <input type="text" className="auth-input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" required />
+          {error && (
+            <div className="auth-error-block">{error}</div>
+          )}
+
+          {/* Demo кнопки — только для входа */}
+          {!isRegister && (
+            <div className="auth-demo-strip">
+              <div className="auth-demo-label">⚡ Быстрый demo вход</div>
+              <div className="auth-demo-row">
+                {[
+                  { email: "org@it.ru",     pass: "org",     label: "👔 Организатор", bg: "var(--primary)" },
+                  { email: "curator@it.ru", pass: "curator", label: "📋 Куратор",      bg: "#6b7280" },
+                  { email: "speaker@it.ru", pass: "speaker", label: "🎤 Спикер",       bg: "#d97706" },
+                  { email: "user@it.ru",    pass: "user",    label: "🙋 Участник",     bg: "#16a34a" },
+                ].map((d) => (
+                  <button
+                    key={d.email}
+                    type="button"
+                    className="auth-demo-btn"
+                    style={{ background: d.bg }}
+                    onClick={() => { setEmail(d.email); setPassword(d.pass); }}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          <div style={{ marginBottom: 14 }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: 11,
-                fontWeight: 800,
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                marginBottom: 5,
-              }}
-            >
-              Email
-            </label>
-            <input
-              type="email"
-              className="auth-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@it.ru"
-              required
-            />
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: 11,
-                fontWeight: 800,
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                marginBottom: 5,
-              }}
-            >
-              Пароль
-            </label>
-            <input
-              type="password"
-              className="auth-input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
-          <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? (isRegister ? "Регистрация..." : "Вход...") : (isRegister ? "Зарегистрироваться" : "Войти")}
-          </button>
-        </form>
 
-        <div style={{ textAlign: "center", marginTop: 16 }}>
-          <span onClick={switchMode} style={{ fontSize: 13, color: "var(--primary)", fontWeight: 700, cursor: "pointer" }}>
-            {isRegister ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться"}
-          </span>
-        </div>
+          <form onSubmit={handleSubmit}>
+            {/* Имя + Фамилия — только регистрация */}
+            {isRegister && (
+              <div className="auth-field-row">
+                <div className="auth-field">
+                  <label className="auth-label">Имя</label>
+                  <input
+                    type="text"
+                    className="auth-input-new"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Введите имя"
+                    required
+                  />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Фамилия</label>
+                  <input
+                    type="text"
+                    className="auth-input-new"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Введите фамилию"
+                  />
+                </div>
+              </div>
+            )}
 
-        {/* Demo buttons — только на странице входа */}
-        {!isRegister && (
-        <div
-          style={{
-            marginTop: 20,
-            borderTop: "1.5px solid var(--border)",
-            paddingTop: 16,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 800,
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              textAlign: "center",
-              marginBottom: 10,
-            }}
-          >
-            Быстрый Demo вход
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {[
-              { email: "org@it.ru", pass: "org", label: "👔 Организатор", bg: "var(--primary)" },
-              { email: "curator@it.ru", pass: "curator", label: "📋 Куратор", bg: "#6b7280" },
-              { email: "speaker@it.ru", pass: "speaker", label: "🎤 Спикер", bg: "#d97706" },
-              { email: "user@it.ru", pass: "user", label: "🙋 Участник", bg: "#16a34a" },
-            ].map((d) => (
-              <button
-                key={d.email}
-                onClick={() => {
-                  setEmail(d.email);
-                  setPassword(d.pass);
-                }}
-                style={{
-                  flex: 1,
-                  padding: 8,
-                  background: d.bg,
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontFamily: "Nunito, sans-serif",
-                }}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        )}
+            {/* Почта */}
+            <div className="auth-field">
+              <label className="auth-label">Почта</label>
+              <input
+                type="email"
+                className="auth-input-new"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Введите адрес почты"
+                required
+              />
+            </div>
 
-        <div style={{ textAlign: "center", marginTop: 12 }}>
-          <span
-            onClick={() => navigate("/")}
-            style={{
-              fontSize: 13,
-              color: "var(--text-muted)",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            ← На главную
-          </span>
+            {/* Пароль */}
+            <div className="auth-field">
+              <label className="auth-label">Пароль</label>
+              <input
+                type="password"
+                className="auth-input-new"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Введите пароль"
+                required
+              />
+            </div>
+
+            {/* Запомнить / Забыли пароль — только вход */}
+            {!isRegister && (
+              <div className="auth-remember-row">
+                <label className="auth-remember-label">
+                  <input type="checkbox" className="auth-checkbox" />
+                  Запомнить меня
+                </label>
+                <span className="auth-forgot">Забыли пароль?</span>
+              </div>
+            )}
+
+            {/* Согласие — только регистрация */}
+            {isRegister && (
+              <div className="auth-agree-row">
+                <input type="checkbox" className="auth-checkbox" required />
+                <span className="auth-agree-text">Я соглашаюсь с условиями</span>
+              </div>
+            )}
+
+            <button type="submit" className="auth-submit-btn" disabled={loading}>
+              {loading
+                ? (isRegister ? "Регистрация..." : "Вход...")
+                : (isRegister ? "Зарегистрироваться" : "Войти")}
+            </button>
+          </form>
+
+          <div className="auth-switch-row">
+            <span onClick={switchMode}>
+              {isRegister
+                ? "Уже есть аккаунт? Войти"
+                : "Нет аккаунта? Зарегистрироваться"}
+            </span>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 // ═══════════════════════════════════════════════════════════════
 // 3. CALENDAR  (FIX #3 — настоящая сетка-календарь)

@@ -12,6 +12,21 @@
 .landing-page li { list-style: none; }
 .landing-page a { text-decoration: none; }
 
+html {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+  height: 100%;
+
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  overflow-y: scroll;
+  height: 100%;
+}
+
+.landing-page {
+  height: 100%;
+}
+
 html, body, #root {
   width: 100%;
   max-width: 100% !important;
@@ -52,8 +67,10 @@ html, body, #root {
   right: 100px;
   height: 142px;
   z-index: 100;
-
-  box-shadow: 0px 0px 22px 0px rgba(242, 242, 242, 0.5) inset,
+  background: rgba(255, 255, 255, 0.11);
+border: 3px solid #FFFFFF;
+backdrop-filter: blur(10px);
+box-shadow: 0px 0px 22px 0px rgba(242, 242, 242, 0.5) inset,
             2px 2px 1px 0px #B3B3B3 inset,
             -2px -2px 1px 0px #B3B3B3 inset,
             0px 0px 0px 0px #999999 inset,
@@ -109,6 +126,7 @@ border: 3px solid #FFFFFF;
   justify-content: center;
   gap: clamp(24px, 3vw, 60px);
   list-style: none;
+  color: #ffffff
 }
 
 .landing-nav-links a {
@@ -153,7 +171,7 @@ border: 3px solid #FFFFFF;
   min-height: 1080px;
   /* Фоновое изображение — задаётся через inline style или заменой этого правила */
   background: url('/bg-auth.jpg') no-repeat center center / cover;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .landing-hero::before {
@@ -169,7 +187,7 @@ border: 3px solid #FFFFFF;
   z-index: 2;
   padding-top: calc(52px + 142px + 60px);
   padding-left: 134px;
-  padding-right: 520px; /* место для фото справа */
+  padding-right: clamp(300px, 32vw, 480px);
   padding-bottom: 80px;
   text-align: left;
 }
@@ -177,7 +195,7 @@ border: 3px solid #FFFFFF;
 .landing-hero-title {
   font-family: 'Nunito', sans-serif;
   font-weight: 800;
-  font-size: clamp(48px, 5vw, 96px);
+  font-size: clamp(36px, 4vw, 72px);
   line-height: 1;
   color: #000000;
   max-width: 900px;
@@ -186,7 +204,7 @@ border: 3px solid #FFFFFF;
 }
 
 .landing-hero-subtitle {
-  font-size: clamp(22px, 2.5vw, 48px);
+  font-size: clamp(16px, 1.8vw, 32px);
   font-weight: 400;
   line-height: 1.2;
   color: #000000;
@@ -198,33 +216,35 @@ border: 3px solid #FFFFFF;
 .landing-hero-photo {
   position: absolute !important;
   right: 0;
-  top: 230px;
-  width: 437px;
-  height: 863px;
-  background: rgba(107, 122, 170, 0.2);
-  border-radius: 40px 0 0 40px;
+  bottom: 0;
+  top: auto;
+  width: clamp(300px, 30vw, 437px);
+  height: 90%;
+  background: transparent;
+  border-radius: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  color: rgba(255,255,255,0.4);
-  font-size: 14px;
-  overflow: hidden;
+  overflow: visible;
   z-index: 1;
 }
 
 .landing-hero-photo img {
-  width: 100%; height: 100%; object-fit: cover;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  object-position: bottom center;
 }
 
 /* Декоративные звёздочки на hero */
 .landing-hero-asterisk-1 {
   position: absolute !important;
   left: 0px;
-  bottom: 160px;
-  width: 320px;
-  height: 280px;
-  z-index: 1;
-  overflow: hidden;
+  bottom: -350px;
+  width: 587px;
+  height: 654px;
+  z-index: 3;
+
   display: flex;
   align-items: center;
   justify-content: center;
@@ -232,7 +252,7 @@ border: 3px solid #FFFFFF;
   font-size: 14px;
   pointer-events: none;
 }
-.landing-hero-asterisk-1 img { width: 100%; height: 100%; object-fit: contain; }
+.landing-hero-asterisk-1 img { width: 100%; height: 100%; }
 
 /* =====================================================
    О КЛАСТЕРЕ — белый фон
@@ -243,19 +263,19 @@ border: 3px solid #FFFFFF;
   padding: 80px 100px 100px;
   position: relative;
   overflow: hidden;
+  height: 814px;
 }
 
 .landing-about-asterisk {
   position: absolute;
   right: 80px;
-  top: 60px;
-  width: 280px;
-  height: 280px;
+  top: 36px;
+  width: 413px;
+  height: 398px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(203,242,255,0.5);
   font-size: 14px;
 }
 .landing-about-asterisk img { width: 100%; height: 100%; object-fit: contain; }
@@ -272,11 +292,13 @@ border: 3px solid #FFFFFF;
 
 /* Карточки фактов — Figma: 342×246, border #0080FC, radius 40 */
 .landing-facts-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
   position: relative;
   z-index: 1;
+  top: 138px;
 }
 
 .landing-fact-card {
@@ -330,22 +352,7 @@ border: 3px solid #FFFFFF;
   line-height: 1.2;
 }
 
-/* Фото справа в секции О Кластере */
-.landing-about-photo {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 413px;
-  height: 398px;
-  background: #6B7AAA;
-  border-radius: 40px 0 0 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255,255,255,0.5);
-  font-size: 16px;
-}
+
 .landing-about-photo img { width:100%; height:100%; object-fit:cover; }
 
 /* =====================================================
@@ -833,4 +840,17 @@ border: 3px solid #FFFFFF;
   .landing-news-card { flex-direction: column; height: auto; }
   .landing-news-photo { width: 100%; height: 160px; }
   .landing-news-divider { display: none; }
+}
+.landing-hero,
+.landing-about,
+.landing-events,
+.landing-news,
+.landing-partners,
+.landing-contacts {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  min-height: 100vh;
+  width: 100%;
+  max-width: none !important;
+  box-sizing: border-box;
 }
