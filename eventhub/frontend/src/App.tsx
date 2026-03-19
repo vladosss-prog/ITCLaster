@@ -16,6 +16,7 @@ import type {
   TaskStatus,
   Event as EventData,
   GlobalRole,
+  ChatRoom,
 } from "./api/apiClient";
 
 import {
