@@ -49,6 +49,8 @@ venv\Scripts\activate
 > В начале строки терминала появится `(venv)` — значит всё ок
 
 ### 3. Установи зависимости Python
+
+### 3. Установи зависимости
 ```bash
 pip install -r requirements.txt
 ```
@@ -171,3 +173,98 @@ git push origin feature/auth
 
 > ⚠️ **Никогда** не пушь `.env` в гит!
 > ⚠️ `models.py` редактирует только Бек 1 после согласования с командой
+### 4. Создай базу данных
+Открой **pgAdmin** → правой кнопкой на **Databases** → **Create** → **Database**
+Имя: `eventhub_db` → Сохранить
+
+### 5. Настрой переменные окружения
+```bash
+copy .env.example .env
+```
+Открой `.env` и укажи свой пароль от PostgreSQL:
+```
+DATABASE_URL=postgresql://postgres:ВАШ_ПАРОЛЬ@localhost/eventhub_db
+SECRET_KEY=придумайте_длинную_строку
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=480
+```
+
+### 6. Создай таблицы в БД
+```bash
+cd backend
+..\venv\Scripts\alembic upgrade head
+```
+
+### 7. Запусти сервер
+```bash
+..\venv\Scripts\uvicorn main:app --reload
+```
+
+- API: [http://localhost:8000](http://localhost:8000)
+- Swagger документация: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+## Запуск фронтенд-проекта
+Перед началом убедитесь, что у вас установлена [Node.js](https://nodejs.org) версии **18.0.0 или выше** (рекомендуется LTS).
+
+# Быстрый старт
+
+1. **Перейдите в директорию фронтенда:**
+   ```bash
+   cd eventhub/frontend
+   
+2. ```bash
+   npm install
+   
+3. ```bash
+   npm run dev
+   
+4.Откройте приложение:
+Перейдите по адресу http://localhost:5173 в вашем браузере.
+## Разработка
+
+### Git-процесс
+```bash
+# Создай свою ветку
+git checkout -b feature/tasks
+
+# Работаешь, коммитишь
+git add .
+git commit -m "feat: CRUD задач с фильтрами"
+git push origin feature/tasks
+
+# Каждое утро забираешь изменения команды
+git pull origin main
+```
+
+### Распределение команды
+
+| Человек | Направление | Файлы |
+|---|---|---|
+| Бек 1 | Ядро, Auth, Events | `models.py`, `routers/auth.py`, `routers/events.py` |
+| Бек 4 | Задачи, Календарь | `routers/tasks.py` |
+| Бек 5 | Участники, Программа | `routers/participants.py` |
+| Бек 6 | Мессенджер, WebSocket | `routers/chat.py` |
+| Фронт | React UI | `frontend/` |
+| Дизайн | Figma | — |
+
+### Правила
+- `models.py` редактирует только **Бек 1** после согласования с командой
+- Если нужна новая таблица — обсуждаем голосом, Бек 1 добавляет и делает новую миграцию
+- После `git pull` всегда запускай `alembic upgrade head` — могли появиться новые миграции
+- `.env` никогда не пушить в гит
+
+---
+
+## Роадмап после хакатона
+
+- Мобильное приложение (React Native)
+- OAuth через Google / VK / Госуслуги
+- Email и Telegram-уведомления
+- Интеграция с Zoom и Google Calendar
+- Расширенная аналитика и экспорт данных
+- Платёжный модуль для платных мероприятий
+
+---
+
+*EventHub — Цифровой хакатон 2026 · ОмГТУ · ИТ-Кластер Сибири*
