@@ -1,0 +1,836 @@
+/* =====================================================
+   ИТ-КЛАСТЕР СИБИРИ — Landing Page CSS
+   Точно по Figma макету
+   ===================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ── RESET ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.landing-page ul, .landing-page ol { list-style: none; margin: 0; padding: 0; }
+.landing-page li { list-style: none; }
+.landing-page a { text-decoration: none; }
+
+html, body, #root {
+  width: 100%;
+  max-width: 100% !important;
+  overflow-x: hidden;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Educational Gothic — fallback на Nunito */
+.landing-page {
+  font-family: 'Nunito', sans-serif;
+  background: #fff;
+  color: #000;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* ── ЗВЁЗДОЧКА (декоративный элемент) ── */
+.asterisk {
+  display: inline-block;
+  font-size: inherit;
+  line-height: 1;
+  font-weight: 900;
+  color: #101B40;
+  user-select: none;
+  pointer-events: none;
+}
+.asterisk-light { color: #6B7AAA; opacity: 0.5; }
+
+/* =====================================================
+   НАВИГАЦИЯ (Glass Button)
+   Figma: width 1783, height 142, left 100, top 52
+   ===================================================== */
+.landing-nav {
+  position: absolute;
+  top: 52px;
+  left: 100px;
+  right: 100px;
+  height: 142px;
+  z-index: 100;
+
+  box-shadow: 0px 0px 22px 0px rgba(242, 242, 242, 0.5) inset,
+            2px 2px 1px 0px #B3B3B3 inset,
+            -2px -2px 1px 0px #B3B3B3 inset,
+            0px 0px 0px 0px #999999 inset,
+            3px 3px 0px 0px rgba(0, 0, 0, 0.5) inset;
+backdrop-filter: blur(10px);
+border-radius: 100px;
+border: 3px solid #FFFFFF;
+
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  padding: 0 48px;
+  gap: 0;
+  overflow: hidden;
+}
+
+.landing-nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  text-decoration: none;
+  color: #000;
+}
+
+.landing-nav-logo-img {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+}
+
+.landing-nav-logo-text {
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.2;
+  color: #000;
+  white-space: normal;  /* ← разрешаем перенос */
+  flex-shrink: 0;
+   text-align: left;
+}
+
+.landing-nav-logo-text small {
+  display: block;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.landing-nav-links {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(24px, 3vw, 60px);
+  list-style: none;
+}
+
+.landing-nav-links a {
+  text-decoration: none;
+  font-weight: 400;
+  font-size: clamp(14px, 1.25vw, 24px);
+  color: #000;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+  letter-spacing: 0.02em;
+}
+
+.landing-nav-links a:hover { opacity: 0.6; }
+
+.landing-nav-user {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  background: white;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: transform 0.2s;
+  font-weight: 700;
+  font-size: 18px;
+  color: #0d1b3e;
+}
+
+.landing-nav-user:hover { transform: scale(1.05); }
+
+/* =====================================================
+   HERO SECTION
+   Figma: фон — голубой градиент/фото 1920×1080
+   ===================================================== */
+.landing-hero {
+  position: relative;
+  width: 100%;
+  min-height: 1080px;
+  /* Фоновое изображение — задаётся через inline style или заменой этого правила */
+  background: url('/bg-auth.jpg') no-repeat center center / cover;
+  overflow: hidden;
+}
+
+.landing-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(226, 245, 251, 0.15);
+  z-index: 0;
+}
+
+.landing-hero-inner {
+  position: relative;
+  z-index: 2;
+  padding-top: calc(52px + 142px + 60px);
+  padding-left: 134px;
+  padding-right: 520px; /* место для фото справа */
+  padding-bottom: 80px;
+  text-align: left;
+}
+
+.landing-hero-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: clamp(48px, 5vw, 96px);
+  line-height: 1;
+  color: #000000;
+  max-width: 900px;
+  margin-bottom: 32px;
+  text-align: left;
+}
+
+.landing-hero-subtitle {
+  font-size: clamp(22px, 2.5vw, 48px);
+  font-weight: 400;
+  line-height: 1.2;
+  color: #000000;
+  max-width: 860px;
+  text-align: left;
+}
+
+/* Фото справа (место для снимка экрана) */
+.landing-hero-photo {
+  position: absolute !important;
+  right: 0;
+  top: 230px;
+  width: 437px;
+  height: 863px;
+  background: rgba(107, 122, 170, 0.2);
+  border-radius: 40px 0 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.4);
+  font-size: 14px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.landing-hero-photo img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+/* Декоративные звёздочки на hero */
+.landing-hero-asterisk-1 {
+  position: absolute !important;
+  left: 0px;
+  bottom: 160px;
+  width: 320px;
+  height: 280px;
+  z-index: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.3);
+  font-size: 14px;
+  pointer-events: none;
+}
+.landing-hero-asterisk-1 img { width: 100%; height: 100%; object-fit: contain; }
+
+/* =====================================================
+   О КЛАСТЕРЕ — белый фон
+   Figma: top 1077, height 814, background #FFFFFF
+   ===================================================== */
+.landing-about {
+  background: #FFFFFF;
+  padding: 80px 100px 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-about-asterisk {
+  position: absolute;
+  right: 80px;
+  top: 60px;
+  width: 280px;
+  height: 280px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(203,242,255,0.5);
+  font-size: 14px;
+}
+.landing-about-asterisk img { width: 100%; height: 100%; object-fit: contain; }
+
+.landing-about-title {
+  font-size: clamp(48px, 5vw, 96px);
+  font-weight: 400;
+  text-align: right;
+  color: #000;
+  margin-bottom: 60px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Карточки фактов — Figma: 342×246, border #0080FC, radius 40 */
+.landing-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.landing-fact-card {
+  position: relative;
+  height: 246px;
+}
+
+/* Тень (смещённый прямоугольник) */
+.landing-fact-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #101B40;
+  border-radius: 40px;
+  transform: translate(14px, 14px);
+  z-index: 0;
+}
+
+.landing-fact-card-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  border: 1px solid #0080FC;
+  border-radius: 40px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-fact-number {
+  font-size: clamp(40px, 3.5vw, 64px);
+  font-weight: 900;
+  line-height: 1;
+  color: #000;
+}
+
+.landing-fact-line {
+  width: 100%;
+  height: 1px;
+  background: #0080FC;
+  margin: 14px 0;
+  flex-shrink: 0;
+}
+
+.landing-fact-desc {
+  font-size: clamp(18px, 1.8vw, 32px);
+  font-weight: 400;
+  color: #000;
+  line-height: 1.2;
+}
+
+/* Фото справа в секции О Кластере */
+.landing-about-photo {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 413px;
+  height: 398px;
+  background: #6B7AAA;
+  border-radius: 40px 0 0 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.5);
+  font-size: 16px;
+}
+.landing-about-photo img { width:100%; height:100%; object-fit:cover; }
+
+/* =====================================================
+   МЕРОПРИЯТИЯ — светло-голубой фон
+   Figma: background #E2F5FB, контейнер #CBF2FF
+   ===================================================== */
+.landing-events {
+  background: #E2F5FB;
+  padding: 80px 0 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-events-asterisk {
+  position: absolute;
+  right: 20px;
+  top: 40px;
+  width: 300px;
+  height: 280px;
+  z-index: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(16,27,64,0.15);
+  font-size: 14px;
+}
+.landing-events-asterisk img { width: 100%; height: 100%; object-fit: contain; }
+
+.landing-events-title {
+  font-size: clamp(48px, 5vw, 96px);
+  font-weight: 400;
+  color: #000;
+  margin-left: clamp(40px, 10vw, 205px);
+  margin-bottom: 40px;
+  position: relative;
+  z-index: 1;
+}
+
+.landing-events-container {
+  background: #CBF2FF;
+  border: 1px solid #0080FC;
+  border-radius: 40px;
+  padding: 40px;
+  margin: 0 clamp(20px, 7vw, 140px);
+  position: relative;
+  z-index: 1;
+}
+
+.landing-events-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+/* Карточка мероприятия */
+.landing-event-card {
+  background: #fff;
+  border: 1px solid #0080FC;
+  border-radius: 40px;
+  padding: 16px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s;
+  cursor: pointer;
+}
+
+.landing-event-card:hover { transform: translateY(-4px); }
+
+.landing-event-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #0080FC;
+  border-radius: 40px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  width: fit-content;
+  margin-bottom: 8px;
+}
+
+.landing-event-photo {
+  width: 100%;
+  aspect-ratio: 196/140;
+  background: #CBF2FF;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: rgba(74,89,138,0.5);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.landing-event-photo img { width:100%; height:100%; object-fit:cover; border-radius:16px; }
+
+.landing-event-name {
+  font-size: clamp(18px, 1.8vw, 32px);
+  font-weight: 400;
+  line-height: 1.1;
+  color: #000;
+  margin-bottom: 8px;
+}
+
+.landing-event-date {
+  font-size: 14px;
+  color: #6F6F6F;
+  margin-bottom: 4px;
+}
+
+.landing-event-location {
+  font-size: 11px;
+  color: #000;
+}
+
+.landing-event-divider {
+  width: 100%;
+  height: 1px;
+  background: #0080FC;
+  margin: 14px 0 10px;
+}
+
+.landing-event-org {
+  font-size: 13px;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Кнопка «Показать еще» — Figma: 459×124, bg #101B40, radius 70 */
+.landing-show-more {
+  width: clamp(280px, 24vw, 459px);
+  height: 80px;
+  background: #101B40;
+  border: 1px solid #0080FC;
+  border-radius: 70px;
+  margin: 40px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: clamp(20px, 2vw, 36px);
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: 'Nunito', sans-serif;
+  border: none;
+}
+.landing-show-more:hover { background: #1f2b5c; }
+
+.landing-show-more-light {
+  background: #E2F5FB;
+  color: #000;
+  border: 1px solid #0080FC;
+}
+.landing-show-more-light:hover { background: #CBF2FF; }
+
+/* =====================================================
+   НОВОСТИ — тёмно-синий #4A598A
+   ===================================================== */
+.landing-news {
+  background: #4A598A;
+  padding: 80px 0 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-news-asterisk {
+  position: absolute;
+  right: 40px;
+  top: 60px;
+  width: 260px;
+  height: 260px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(107,122,170,0.3);
+  font-size: 14px;
+}
+.landing-news-asterisk img { width: 100%; height: 100%; object-fit: contain; }
+
+.landing-news-title {
+  font-size: clamp(48px, 5vw, 96px);
+  font-weight: 400;
+  color: #fff;
+  margin-left: clamp(40px, 12vw, 230px);
+  margin-bottom: 40px;
+  position: relative;
+  z-index: 1;
+}
+
+.landing-news-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  margin: 0 clamp(20px, 12vw, 230px);
+  position: relative;
+  z-index: 1;
+}
+
+/* Карточка новости — Figma: height 295, radius 40 */
+.landing-news-card {
+  background: #fff;
+  border: 1px solid #0080FC;
+  border-radius: 40px;
+  height: 295px;
+  display: flex;
+  overflow: hidden;
+}
+
+.landing-news-photo {
+  width: 220px;
+  flex-shrink: 0;
+  background: #CBF2FF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: rgba(74,89,138,0.5);
+  overflow: hidden;
+}
+.landing-news-photo img { width:100%; height:100%; object-fit:cover; }
+
+.landing-news-divider {
+  width: 1px;
+  background: #0080FC;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.landing-news-content {
+  flex: 1;
+  padding: 20px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-news-date {
+  font-size: 18px;
+  color: #000;
+  margin-bottom: 10px;
+}
+
+.landing-news-headline {
+  font-size: clamp(16px, 1.8vw, 32px);
+  font-weight: 400;
+  color: #000;
+  line-height: 1.25;
+}
+
+.landing-news-views {
+  position: absolute;
+  bottom: 18px;
+  right: 24px;
+  font-size: 14px;
+  color: #6F6F6F;
+}
+
+/* =====================================================
+   ПАРТНЁРЫ — белый фон
+   ===================================================== */
+.landing-partners {
+  background: #fff;
+  padding: 80px 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-partners-asterisk {
+  position: absolute;
+  left: 40px;
+  top: 60px;
+  width: 300px;
+  height: 280px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(16,27,64,0.15);
+  font-size: 14px;
+}
+.landing-partners-asterisk img { width: 100%; height: 100%; object-fit: contain; }
+
+.landing-partners-title {
+  font-size: clamp(48px, 5vw, 96px);
+  font-weight: 400;
+  text-align: right;
+  color: #000;
+  margin-bottom: 60px;
+  position: relative;
+  z-index: 1;
+}
+
+.landing-partners-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 24px 40px;
+  align-items: center;
+  justify-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.landing-partner-logo {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+}
+
+.landing-partner-logo img {
+  max-height: 80px;
+  max-width: 200px;
+  width: auto;
+  object-fit: contain;
+  filter: grayscale(20%);
+  transition: filter 0.2s;
+}
+.landing-partner-logo img:hover { filter: none; }
+
+/* Плейсхолдер если нет картинки */
+.landing-partner-logo-placeholder {
+  height: 80px;
+  background: #E2F5FB;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #4A598A;
+  font-weight: 600;
+  padding: 12px 20px;
+  text-align: center;
+  width: 100%;
+}
+
+/* =====================================================
+   КОНТАКТЫ
+   Figma: карточка 1553×917, bg #E2F5FB, radius 70
+   ===================================================== */
+.landing-contacts {
+  background: #fff;
+  padding: 0 100px 100px;
+  position: relative;
+}
+
+.landing-contacts-card {
+  background: #E2F5FB;
+  border: 1px solid #0080FC;
+  border-radius: 70px;
+  padding: 60px 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Тёмный блок справа */
+.landing-contacts-dark-bg {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 35%;
+  height: 80%;
+  background: #101B40;
+  border-radius: 70px 0 70px 0;
+  z-index: 0;
+}
+
+.landing-contacts-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 60px;
+}
+
+.landing-contacts-left { flex: 1; }
+
+.landing-contacts-title {
+  font-size: clamp(36px, 4vw, 96px);
+  font-weight: 400;
+  line-height: 1;
+  margin-bottom: 40px;
+  color: #000;
+}
+
+.landing-contacts-info {
+  font-size: clamp(18px, 2vw, 48px);
+  font-weight: 400;
+  line-height: 1.4;
+  color: #000;
+}
+
+.landing-contacts-right {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.landing-qr-block {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.landing-qr-box {
+  width: 180px;
+  height: 180px;
+  background: #FFFDFD;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.landing-qr-box img { width:100%; height:100%; object-fit:contain; }
+
+.landing-qr-label {
+  font-size: clamp(20px, 2.5vw, 48px);
+  font-weight: 400;
+  color: #fff;
+}
+
+/* =====================================================
+   АДАПТИВ
+   ===================================================== */
+@media (max-width: 1400px) {
+  .landing-nav { left: 60px; right: 60px; height: 110px; }
+  .landing-hero-inner { padding-top: calc(52px + 110px + 40px); }
+  .landing-facts-grid { grid-template-columns: repeat(2, 1fr); }
+  .landing-events-grid { grid-template-columns: repeat(2, 1fr); }
+  .landing-partners-grid { grid-template-columns: repeat(4, 1fr); }
+  .landing-contacts-inner { flex-direction: column; }
+}
+
+@media (max-width: 1200px) {
+  .landing-nav { left: 40px; right: 40px; height: 100px; padding: 0 32px; }
+  .landing-hero-inner { padding-left: 80px; padding-right: 80px; }
+  .landing-about { padding: 60px 60px 80px; }
+  .landing-contacts { padding: 0 60px 80px; }
+  .landing-hero-photo { display: none; }
+  .landing-hero-asterisk-1 { font-size: 140px; }
+}
+
+@media (max-width: 992px) {
+  .landing-nav {
+    left: 16px; right: 16px; height: auto;
+    padding: 16px 20px; border-radius: 24px;
+    flex-wrap: wrap; gap: 12px;
+    top: 16px;
+  }
+  .landing-nav-links {
+    order: 3; width: 100%; flex-wrap: wrap;
+    justify-content: center; gap: 12px;
+  }
+  .landing-hero-inner { padding-top: 200px; padding-left: 30px; padding-right: 30px; }
+  .landing-about, .landing-events, .landing-news, .landing-partners { padding-left: 20px; padding-right: 20px; }
+  .landing-events-title, .landing-news-title { margin-left: 20px; }
+  .landing-events-container { margin: 0 20px; }
+  .landing-news-grid { margin: 0 20px; }
+  .landing-facts-grid { grid-template-columns: 1fr 1fr; }
+  .landing-events-grid { grid-template-columns: 1fr 1fr; }
+  .landing-news-grid { grid-template-columns: 1fr; }
+  .landing-partners-grid { grid-template-columns: repeat(3, 1fr); }
+  .landing-contacts { padding: 0 20px 60px; }
+  .landing-contacts-card { padding: 40px 24px; }
+  .landing-about-photo { display: none; }
+  .landing-about-asterisk { font-size: 100px; }
+  .landing-news-asterisk { display: none; }
+  .landing-partners-asterisk { display: none; }
+}
+
+@media (max-width: 600px) {
+  .landing-facts-grid { grid-template-columns: 1fr; }
+  .landing-events-grid { grid-template-columns: 1fr; }
+  .landing-partners-grid { grid-template-columns: repeat(2, 1fr); }
+  .landing-news-card { flex-direction: column; height: auto; }
+  .landing-news-photo { width: 100%; height: 160px; }
+  .landing-news-divider { display: none; }
+}

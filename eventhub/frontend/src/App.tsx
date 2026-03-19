@@ -1,3 +1,5 @@
+import "./App.css";
+import "./ITClusterLanding.css"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrowserRouter,
@@ -51,263 +53,7 @@ async function apiFetch<T = any>(method: string, path: string, body?: any): Prom
 
 // ═══════════════════════════════════════════════════════════════
 // GLOBAL CSS
-// ═══════════════════════════════════════════════════════════════
-const GLOBAL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-
-:root {
-  --primary: #2563eb;
-  --primary-dark: #0d1b3e;
-  --primary-light: #3b82f6;
-  --accent: #f59e0b;
-  --bg-light: #f1f5f9;
-  --bg-medium: #e8f0fe;
-  --border: #e2e8f0;
-  --text-main: #1e293b;
-  --text-muted: #64748b;
-  --success: #16a34a;
-  --danger: #ef4444;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-  font-family: 'Nunito', sans-serif;
-  background: var(--bg-light);
-  color: var(--text-main);
-  min-height: 100vh;
-}
-
-a { text-decoration: none; color: inherit; }
-
-.dashboard-wrapper { display: flex; min-height: calc(100vh - 58px); }
-
-.dashboard-sidebar {
-  width: 260px; background: white; border-right: 1.5px solid var(--border);
-  padding: 20px 20px; display: flex; flex-direction: column; gap: 20px;
-  position: sticky; top: 58px; height: calc(100vh - 58px); overflow-y: auto;
-}
-
-.dashboard-main-content {
-  flex: 1; padding: 32px 36px; overflow-y: auto; min-height: calc(100vh - 58px);
-}
-
-.sidebar-nav-list { display: flex; flex-direction: column; gap: 4px; }
-
-.nav-link {
-  display: flex; align-items: center; padding: 10px 14px; border-radius: 10px;
-  font-weight: 700; font-size: 14px; cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-family: 'Nunito', sans-serif; border: none; text-align: left; width: 100%;
-}
-.nav-link:hover { background: #eef6ff !important; }
-
-.auth-page {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #0d1b3e 0%, #1e3a8a 50%, #2563eb 100%);
-  padding: 20px;
-}
-.auth-card {
-  background: white; border-radius: 24px; padding: 40px 36px;
-  width: 100%; max-width: 420px; box-shadow: 0 25px 80px rgba(0,0,0,0.25);
-}
-.auth-input {
-  width: 100%; padding: 12px 16px; border-radius: 10px;
-  border: 1.5px solid var(--border); font-size: 14px;
-  font-family: 'Nunito', sans-serif; outline: none;
-  transition: border-color 0.2s; box-sizing: border-box;
-}
-.auth-input:focus { border-color: var(--primary); }
-.auth-btn {
-  width: 100%; padding: 13px; background: var(--primary); color: white;
-  border: none; border-radius: 100px; font-weight: 800; font-size: 15px;
-  cursor: pointer; font-family: 'Nunito', sans-serif; transition: opacity 0.15s;
-}
-.auth-btn:hover { opacity: 0.9; }
-.auth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.kanban-col { background: var(--bg-light); border-radius: 14px; padding: 16px; min-height: 220px; }
-.kanban-card {
-  background: white; border-radius: 12px; padding: 14px 16px;
-  box-shadow: 0 2px 8px rgba(74,89,138,0.06); border: 1.5px solid var(--border);
-  margin-bottom: 10px; transition: box-shadow 0.15s, transform 0.1s;
-}
-.kanban-card:hover { box-shadow: 0 4px 16px rgba(74,89,138,0.12); transform: translateY(-1px); }
-
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.cal-cell {
-  min-height: 90px; background: white; border-radius: 8px; padding: 6px 8px;
-  border: 1.5px solid var(--border); transition: border-color 0.15s; position: relative;
-}
-.cal-cell:hover { border-color: var(--primary-light); }
-.cal-cell.today { border-color: var(--primary); background: #eef6ff; }
-.cal-cell.other-month { background: #f8fafc; opacity: 0.5; }
-.cal-day-num { font-size: 12px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px; }
-.cal-cell.today .cal-day-num { color: var(--primary); }
-.cal-dot {
-  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
-  margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.cal-nav-btn {
-  padding: 8px 18px; background: white; border: 1.5px solid var(--border);
-  border-radius: 8px; font-weight: 800; cursor: pointer;
-  font-family: 'Nunito', sans-serif; font-size: 14px; color: var(--primary-dark);
-  transition: background 0.15s, border-color 0.15s;
-}
-.cal-nav-btn:hover { background: var(--bg-medium); border-color: var(--primary); }
-
-.chat-wrapper { display: flex; height: calc(100vh - 100px); border-radius: 16px; overflow: hidden; border: 1.5px solid var(--border); background: white; }
-.chat-rooms-list { width: 280px; border-right: 1.5px solid var(--border); display: flex; flex-direction: column; background: #fafbfc; }
-.chat-rooms-header { padding: 16px 18px; border-bottom: 1.5px solid var(--border); font-weight: 800; font-size: 15px; color: var(--primary-dark); display: flex; justify-content: space-between; align-items: center; }
-.chat-room-item { padding: 12px 18px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.12s; display: flex; align-items: center; gap: 10px; }
-.chat-room-item:hover { background: #eef6ff; }
-.chat-room-item.active { background: #e8f0fe; border-left: 3px solid var(--primary); }
-.chat-messages-area { flex: 1; display: flex; flex-direction: column; }
-.chat-messages-header { padding: 14px 20px; border-bottom: 1.5px solid var(--border); font-weight: 800; font-size: 14px; color: var(--primary-dark); background: white; }
-.chat-messages-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
-.chat-msg { max-width: 70%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.5; word-wrap: break-word; }
-.chat-msg.mine { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 4px; }
-.chat-msg.theirs { align-self: flex-start; background: #f1f5f9; color: var(--text-main); border-bottom-left-radius: 4px; }
-.chat-input-bar { padding: 12px 16px; border-top: 1.5px solid var(--border); display: flex; gap: 10px; background: white; }
-.chat-input-bar input { flex: 1; padding: 10px 14px; border-radius: 10px; border: 1.5px solid var(--border); font-size: 13px; font-family: 'Nunito', sans-serif; outline: none; }
-.chat-input-bar input:focus { border-color: var(--primary); }
-.chat-input-bar button { padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 10px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: 'Nunito', sans-serif; white-space: nowrap; }
-.chat-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-weight: 600; font-size: 14px; }
-@media (max-width: 900px) { .chat-rooms-list { width: 200px; } .chat-msg { max-width: 85%; } }
-
-.landing-hero {
-  min-height: 100vh; display: flex; flex-direction: column;
-  background: linear-gradient(180deg, #e8f4fc 0%, #d4ecfb 40%, #c3e4f8 100%);
-  color: var(--text-main); position: relative; overflow: hidden;
-}
-.landing-hero::before {
-  content: ''; position: absolute; inset: 0;
-  background: radial-gradient(circle at 85% 30%, rgba(59,130,246,0.12) 0%, transparent 55%),
-              radial-gradient(circle at 15% 70%, rgba(59,130,246,0.08) 0%, transparent 50%);
-  pointer-events: none;
-}
-.landing-topbar {
-  position: sticky; top: 0; z-index: 100; padding: 16px 48px;
-  display: flex; justify-content: center;
-  background: rgba(255,255,255,0.65); backdrop-filter: blur(16px);
-}
-.landing-topbar.on-landing {
-  background: transparent; backdrop-filter: none;
-}
-.landing-topbar.on-dashboard {
-  background: rgba(255,255,255,0.85); backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border); padding: 10px 48px;
-}
-.landing-nav-pill {
-  display: flex; align-items: center; justify-content: space-between;
-  background: rgba(255,255,255,0.85); backdrop-filter: blur(16px);
-  border: 1.5px solid rgba(255,255,255,0.7); border-radius: 100px;
-  padding: 10px 28px; width: 100%; max-width: 900px;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.06);
-}
-.landing-nav-links {
-  display: flex; gap: 28px; align-items: center;
-}
-.landing-nav-links a {
-  font-size: 13px; font-weight: 700; color: var(--text-main);
-  text-decoration: none; letter-spacing: 0.3px; transition: color 0.2s;
-  cursor: pointer; white-space: nowrap;
-}
-.landing-nav-links a:hover { color: var(--primary); }
-.landing-nav-logo {
-  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
-}
-.landing-nav-logo-icon {
-  width: 36px; height: 36px; border-radius: 8px;
-  background: var(--primary); color: white;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 900; font-size: 16px;
-}
-.landing-nav-logo-text {
-  font-weight: 900; font-size: 14px; color: var(--primary-dark);
-  line-height: 1.15; white-space: nowrap;
-}
-.landing-nav-user {
-  width: 38px; height: 38px; border-radius: 50%;
-  border: 1.5px solid var(--border); background: white;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; transition: border-color 0.2s; flex-shrink: 0;
-}
-.landing-nav-user:hover { border-color: var(--primary); }
-.nav-user-info {
-  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
-}
-.nav-user-name {
-  font-size: 13px; font-weight: 700; color: var(--primary-dark);
-  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.nav-user-avatar {
-  width: 34px; height: 34px; border-radius: 50%;
-  background: var(--primary); color: white; font-weight: 900; font-size: 13px;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.nav-logout-btn {
-  padding: 6px 14px; background: #fff1f1; color: #ef4444;
-  border: 1px solid #fecaca; border-radius: 100;
-  font-weight: 700; font-size: 11px; cursor: pointer;
-  font-family: 'Nunito', sans-serif; white-space: nowrap;
-  transition: background 0.15s;
-}
-.nav-logout-btn:hover { background: #fee2e2; }
-.event-detail-page {
-  max-width: 900px; margin: 0 auto; padding: 32px 24px;
-}
-.comment-card {
-  background: white; border-radius: 12px; padding: 14px 18px;
-  border: 1.5px solid var(--border); margin-bottom: 10px;
-}
-.landing-content {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  padding: 0 48px; position: relative; z-index: 2;
-}
-.landing-features { padding: 80px 48px; background: white; }
-.feature-card {
-  background: var(--bg-light); border-radius: 20px; padding: 32px 28px;
-  border: 1.5px solid var(--border); transition: transform 0.2s, box-shadow 0.2s;
-}
-.feature-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(74,89,138,0.1); }
-
-@media (max-width: 900px) {
-  .dashboard-wrapper { flex-direction: column; }
-  .dashboard-sidebar {
-    width: 100%; height: auto; position: relative;
-    flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 16px;
-  }
-  .sidebar-nav-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-  .dashboard-main-content { padding: 20px 16px; }
-  .kanban-board { grid-template-columns: 1fr; }
-  .landing-topbar { padding: 12px 16px; }
-  .landing-nav-pill { padding: 8px 16px; max-width: 100%; }
-  .landing-nav-links { gap: 14px; }
-  .landing-nav-links a { font-size: 11px; }
-  .landing-content { padding: 0 20px; }
-  .landing-features { padding: 40px 20px; }
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-`;
-
-function injectGlobalCSS() {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("eh-css")) return;
-  const s = document.createElement("style");
-  s.id = "eh-css";
-  s.textContent = GLOBAL_CSS;
-  document.head.appendChild(s);
-}
+// Styles are in App.css — imported in main.tsx
 
 // ═══════════════════════════════════════════════════════════════
 // UI HELPERS
@@ -415,14 +161,15 @@ function TopBar({ user, onLogout, variant = "default" }: { user: User | null; on
     <div className={`landing-topbar${variant === "landing" ? " on-landing" : " on-dashboard"}`}>
       <div className="landing-nav-pill">
         <div className="landing-nav-logo" style={{ cursor: "pointer" }} onClick={() => navigate("/")}>
-          <div className="landing-nav-logo-icon">EH</div>
+          <div className="landing-nav-logo-icon"><img src="/it-claster-logo.png" alt="logo" /></div>
           <div className="landing-nav-logo-text">EVENT<br/>HUB</div>
         </div>
         <nav className="landing-nav-links">
-          <a onClick={() => navigate("/")}>ГЛАВНАЯ</a>
+          <a onClick={() => navigate("/")}>О КЛАСТЕРЕ</a>
           <a onClick={() => navigate("/events")}>МЕРОПРИЯТИЯ</a>
-          {user && <a onClick={() => navigate("/dashboard")}>ЛИЧНЫЙ КАБИНЕТ</a>}
-          <a onClick={() => navigate("/events")}>КОНТАКТЫ</a>
+          {user && <a onClick={() => navigate("/dashboard")}>НОВОСТИ</a>}
+          <a onClick={() => navigate("/events")}>ПАРТНЁРЫ</a>
+          <a onClick={() => navigate("")}>КОНТАКТЫ</a>
         </nav>
         {user ? (
           <div className="nav-user-info">
@@ -974,246 +721,227 @@ const DEMO_TASKS: Task[] = [
 // ═══════════════════════════════════════════════════════════════
 // 1. LANDING PAGE  (FIX #5 — возвращён лендинг)
 // ═══════════════════════════════════════════════════════════════
+// ── ДАННЫЕ ──────────────────────────────────────────
+const LANDING_EVENTS = [
+  { id: 1, badge: "Лекция",  name: "Цифровой хакатон", date: "16-20 марта 2026",  location: "📍 Омск, Точка кипения", org: "Организатор: ИТ-Кластер" },
+  { id: 2, badge: "Форум",   name: "ИТ-Форум 2026",    date: "10-12 апреля 2026", location: "📍 Новосибирск",          org: "300+ участников" },
+  { id: 3, badge: "Воркшоп", name: "ML в продакшне",   date: "5 мая 2026",        location: "📍 Онлайн",               org: "Спикер: Иванов И." },
+  { id: 4, badge: "Хакатон", name: "Робофест Омск",    date: "1-3 октября 2026",  location: "📍 Омск",                  org: "Призовой фонд 300k" },
+  { id: 5, badge: "Конф.",   name: "DevConf 2026",      date: "15 июня 2026",      location: "📍 Омск",                  org: "2000+ участников" },
+  { id: 6, badge: "Встреча", name: "IT Нетворкинг",    date: "20 мая 2026",       location: "📍 Омск",                  org: "Организатор: ИТ-Кластер" },
+  { id: 7, badge: "Форум",   name: "Цифровой регион",  date: "10 июля 2026",      location: "📍 Новосибирск",           org: "500+ участников" },
+  { id: 8, badge: "Хакатон", name: "AI Challenge",     date: "5 сентября 2026",   location: "📍 Онлайн",               org: "Призовой фонд 500k" },
+];
+
+const LANDING_NEWS = [
+  { id: 1, date: "25 февраля 2026", headline: "Открыта регистрация на ИТ-Форум 2026",       views: "👁 1 234 просмотра" },
+  { id: 2, date: "20 февраля 2026", headline: "Партнеры года: Сбер, Тинькофф и Яндекс",     views: "👁 856 просмотров" },
+  { id: 3, date: "15 февраля 2026", headline: "Итоги хакатона «Цифровой прорыв»",            views: "👁 2 101 просмотр" },
+  { id: 4, date: "10 февраля 2026", headline: "Новый образовательный курс для студентов ОмГТУ", views: "👁 645 просмотров" },
+];
+
+const LANDING_FACTS = [
+  { number: "15+",   desc: "лет опыта" },
+  { number: "200+",  desc: "компаний" },
+  { number: "50+",   desc: "мероприятий в год" },
+  { number: "5000+", desc: "участников" },
+];
+
+const LANDING_PARTNERS = [
+  "ИНСИСТ Автоматика", "IT Академия", "BTL+", "Амолл", "Supervisor",
+  "ОмГТУ", "ДЭМ", "itБРАТ", "ХочуКлиентов", "Jalinga", "Koyu.Tech", "VK",
+];
+
 function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => void }) {
   const navigate = useNavigate();
+  const [showAllEvents, setShowAllEvents] = React.useState(false);
 
-  const features = [
-    { icon: "🏗️", title: "Структура мероприятия", desc: "Секции, доклады, кейсы — всё в одном месте с ролевой моделью" },
-    { icon: "📌", title: "Канбан задач", desc: "Ставьте задачи организаторам, кураторам, спикерам. Контролируйте % готовности" },
-    { icon: "📅", title: "Календарь и расписание", desc: "Мероприятия, дедлайны задач и личное расписание участника" },
-    { icon: "👥", title: "4 роли", desc: "Организатор → Куратор → Спикер → Участник. Каждый видит своё" },
-    { icon: "💬", title: "Встроенный мессенджер", desc: "Групповые чаты мероприятий и ЛС. WebSocket в реальном времени" },
-    { icon: "⭐", title: "Обратная связь", desc: "Комментарии и оценки докладов. Итоговый отчёт куратора секции" },
-  ];
+  const visibleEvents = showAllEvents ? LANDING_EVENTS : LANDING_EVENTS.slice(0, 4);
+
+  const handleUserClick = () => {
+    if (user) navigate("/dashboard");
+    else navigate("/login");
+  };
 
   return (
-    <div>
-      {/* HERO */}
-      <div className="landing-hero">
-        <TopBar user={user} onLogout={onLogout} variant="landing" />
+    <div className="landing-page">
 
-        <div className="landing-content">
-          <div style={{ maxWidth: 680, animation: "fadeInUp 0.8s ease-out" }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: "var(--primary)",
-                textTransform: "uppercase",
-                letterSpacing: 2,
-                marginBottom: 16,
-              }}
-            >
-              Платформа управления мероприятиями
-            </div>
-            <h1
-              style={{
-                fontSize: "clamp(36px, 5vw, 56px)",
-                fontWeight: 900,
-                lineHeight: 1.15,
-                marginBottom: 20,
-                letterSpacing: "-1px",
-                color: "var(--primary-dark)",
-              }}
-            >
-              Организуйте форумы,{" "}
-              <span style={{ color: "var(--primary)" }}>конференции</span> и хакатоны в
-              одном месте
-            </h1>
-            <p
-              style={{
-                fontSize: 18,
-                color: "var(--text-muted)",
-                lineHeight: 1.7,
-                marginBottom: 36,
-                maxWidth: 520,
-              }}
-            >
-              Замените связку «сайт&nbsp;+ мессенджеры&nbsp;+ таблицы&nbsp;+
-              файл&nbsp;программы» одним инструментом.
-            </p>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <button
-                onClick={() => navigate("/events")}
-                style={{
-                  padding: "14px 36px",
-                  background: "var(--primary)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 100,
-                  fontWeight: 900,
-                  fontSize: 16,
-                  cursor: "pointer",
-                  fontFamily: "Nunito, sans-serif",
-                  boxShadow: "0 4px 20px rgba(37,99,235,0.3)",
-                }}
-              >
-                Смотреть мероприятия →
-              </button>
-              <button
-                onClick={() =>
-                  document
-                    .getElementById("features")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
-                style={{
-                  padding: "14px 36px",
-                  background: "white",
-                  color: "var(--primary-dark)",
-                  border: "1.5px solid var(--border)",
-                  borderRadius: 100,
-                  fontWeight: 800,
-                  fontSize: 16,
-                  cursor: "pointer",
-                  fontFamily: "Nunito, sans-serif",
-                }}
-              >
-                Узнать больше
-              </button>
-            </div>
-            <div style={{ display: "flex", gap: 40, marginTop: 48 }}>
-              {[
-                { n: "4", l: "Роли" },
-                { n: "10+", l: "Функций куратора" },
-                { n: "1", l: "Вместо 5 сервисов" },
-              ].map((s) => (
-                <div key={s.l}>
-                  <div style={{ fontSize: 28, fontWeight: 900, color: "var(--primary)" }}>
-                    {s.n}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {s.l}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* ═══ HERO ═══ */}
+      <section className="landing-hero">
+        {/* Навигация */}
+        <nav className="landing-nav">
+          <a href="#" className="landing-nav-logo" onClick={e => { e.preventDefault(); window.scrollTo(0,0); }}>
+            {/* Место для логотипа — снимок экрана */}
+            <img src="/it-claster-logo.png" alt="ИТ-Кластер Сибири" className="landing-nav-logo-img" />
+              <div className="landing-nav-logo-text">
+  ИТ-КЛАСТЕР<br/>СИБИРИ
+</div>
+          </a>
+
+          <ul className="landing-nav-links" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            <li><a href="#about">О КЛАСТЕРЕ</a></li>
+            <li><a href="#events">МЕРОПРИЯТИЯ</a></li>
+            <li><a href="#news">НОВОСТИ</a></li>
+            <li><a href="#partners">ПАРТНЕРЫ</a></li>
+            <li><a href="#contacts">КОНТАКТЫ</a></li>
+          </ul>
+
+          <button className="landing-nav-user" onClick={handleUserClick} title={user ? user.full_name + " — Личный кабинет" : "Войти"}>
+            {user ? (
+              <span>{user.full_name?.[0]?.toUpperCase() || "?"}</span>
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            )}
+          </button>
+        </nav>
+
+        {/* Hero контент */}
+        <div className="landing-hero-inner">
+          <h1 className="landing-hero-title">ИТ Кластер Сибири —<br/>объединение лидеров</h1>
+          <p className="landing-hero-subtitle">
+            Наша цель — создание сильного сообщества профессионалов, способных воплощать в жизнь инновационные идеи и развивать цифровую отрасль региона
+          </p>
         </div>
-      </div>
 
-      {/* FEATURES */}
-      <div id="features" className="landing-features">
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: "var(--primary)",
-                textTransform: "uppercase",
-                letterSpacing: 2,
-                marginBottom: 8,
-              }}
-            >
-              Возможности
+        {/* Место для фото справа */}
+        <div className="landing-hero-photo">Снимок экрана</div>
+
+        {/* Декоративная звёздочка — снимок экрана */}
+        <div className="landing-hero-asterisk-1">Снимок экрана</div>
+      </section>
+
+      {/* ═══ О КЛАСТЕРЕ ═══ */}
+      <section className="landing-about" id="about">
+        <div className="landing-about-asterisk">Снимок экрана</div>
+        <h2 className="landing-about-title">О Кластере</h2>
+
+        <div className="landing-facts-grid">
+          {LANDING_FACTS.map(f => (
+            <div className="landing-fact-card" key={f.number}>
+              <div className="landing-fact-card-inner">
+                <div className="landing-fact-number">{f.number}</div>
+                <div className="landing-fact-line"/>
+                <div className="landing-fact-desc">{f.desc}</div>
+              </div>
             </div>
-            <h2
-              style={{
-                fontSize: 32,
-                fontWeight: 900,
-                color: "var(--primary-dark)",
-              }}
-            >
-              Всё что нужно — в одной платформе
-            </h2>
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: 20,
-            }}
-          >
-            {features.map((f) => (
-              <div key={f.title} className="feature-card">
-                <div style={{ fontSize: 36, marginBottom: 14 }}>{f.icon}</div>
-                <h3
-                  style={{
-                    fontWeight: 800,
-                    fontSize: 16,
-                    color: "var(--primary-dark)",
-                    marginBottom: 8,
-                  }}
-                >
-                  {f.title}
-                </h3>
-                <p
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-muted)",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {f.desc}
-                </p>
+          ))}
+        </div>
+
+        {/* Место для фото */}
+        <div className="landing-about-photo">Снимок экрана</div>
+      </section>
+
+      {/* ═══ МЕРОПРИЯТИЯ ═══ */}
+      <section className="landing-events" id="events">
+        <div className="landing-events-asterisk">Снимок экрана</div>
+        <h2 className="landing-events-title">Мероприятия</h2>
+
+        <div className="landing-events-container">
+          <div className="landing-events-grid">
+            {visibleEvents.map(ev => (
+              <div className="landing-event-card" key={ev.id}>
+                <div className="landing-event-badge">
+                  <span>{ev.badge}</span>
+                </div>
+                {/* Место для фото мероприятия */}
+                <div className="landing-event-photo">Снимок экрана</div>
+                <div className="landing-event-name">{ev.name}</div>
+                <div className="landing-event-date">{ev.date}</div>
+                <div className="landing-event-location">{ev.location}</div>
+                <div className="landing-event-divider"/>
+                <div className="landing-event-org">
+                  <span>{ev.org}</span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4A598A" strokeWidth="1.5">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      </div>
 
-      {/* FOOTER CTA */}
-      <div
-        id="footer-cta"
-        style={{
-          padding: "64px 48px",
-          background: "var(--primary-dark)",
-          textAlign: "center",
-          color: "white",
-        }}
-      >
-        <h2 style={{ fontSize: 28, fontWeight: 900, marginBottom: 12 }}>
-          Готовы начать?
-        </h2>
-        <p
-          style={{
-            color: "rgba(255,255,255,0.6)",
-            marginBottom: 28,
-            fontSize: 16,
-          }}
-        >
-          Создайте первое мероприятие прямо сейчас
-        </p>
-        <button
-          onClick={() => navigate("/events")}
-          style={{
-            padding: "14px 40px",
-            background: "white",
-            color: "var(--primary-dark)",
-            border: "none",
-            borderRadius: 100,
-            fontWeight: 900,
-            fontSize: 16,
-            cursor: "pointer",
-            fontFamily: "Nunito, sans-serif",
-          }}
-        >
-          Смотреть мероприятия
-        </button>
-        <div
-          style={{
-            marginTop: 32,
-            fontSize: 12,
-            color: "rgba(255,255,255,0.35)",
-          }}
-        >
-          EventHub · Цифровой хакатон 2026 · ОмГТУ × ИТ-Кластер Сибири
+          <button className="landing-show-more" onClick={() => setShowAllEvents(!showAllEvents)}>
+            {showAllEvents ? "Скрыть" : "Показать еще"}
+          </button>
         </div>
-      </div>
+      </section>
+
+      {/* ═══ НОВОСТИ ═══ */}
+      <section className="landing-news" id="news">
+        <div className="landing-news-asterisk">Снимок экрана</div>
+        <h2 className="landing-news-title">Новости</h2>
+
+        <div className="landing-news-grid">
+          {LANDING_NEWS.map(n => (
+            <div className="landing-news-card" key={n.id}>
+              {/* Место для фото новости */}
+              <div className="landing-news-photo">Снимок экрана</div>
+              <div className="landing-news-divider"/>
+              <div className="landing-news-content">
+                <div className="landing-news-date">{n.date}</div>
+                <div className="landing-news-headline">{n.headline}</div>
+                <div className="landing-news-views">{n.views}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button className="landing-show-more landing-show-more-light" style={{ margin: "40px auto 0" }}>
+          Показать еще
+        </button>
+      </section>
+
+      {/* ═══ ПАРТНЁРЫ ═══ */}
+      <section className="landing-partners" id="partners">
+        <div className="landing-partners-asterisk">Снимок экрана</div>
+        <h2 className="landing-partners-title">Наши партнеры</h2>
+
+        <div className="landing-partners-grid">
+          {LANDING_PARTNERS.map(p => (
+            <div className="landing-partner-logo" key={p}>
+              {/* Место для логотипа партнёра — снимок экрана */}
+              <div className="landing-partner-logo-placeholder">{p}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ═══ КОНТАКТЫ ═══ */}
+      <section className="landing-contacts" id="contacts">
+        <div className="landing-contacts-card">
+          <div className="landing-contacts-dark-bg"/>
+          <div className="landing-contacts-inner">
+            <div className="landing-contacts-left">
+              <h3 className="landing-contacts-title">Связаться<br/>с нами</h3>
+              <div className="landing-contacts-info">
+                Телефон: +7 (3812) 00-00-00<br/>
+                Почта: info@it-cluster.ru
+              </div>
+            </div>
+            <div className="landing-contacts-right">
+              <div className="landing-qr-block">
+                {/* Место для QR Telegram */}
+                <div className="landing-qr-box">QR TG</div>
+                <span className="landing-qr-label">QR TELEGRAM</span>
+              </div>
+              <div className="landing-qr-block">
+                {/* Место для QR VK */}
+                <div className="landing-qr-box">QR VK</div>
+                <span className="landing-qr-label">QR VK</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 2. AUTH PAGE
-// ═══════════════════════════════════════════════════════════════
+
 function AuthPage({ onLogin, onRegister, loading, error }: {
   onLogin: (email: string, password: string) => void;
   onRegister: (email: string, password: string, full_name: string) => void;
@@ -4240,8 +3968,7 @@ function AppContent() {
   useEffect(() => { localStorage.setItem("eh_regs", JSON.stringify([...sharedRegs])); }, [sharedRegs]);
 
   useEffect(() => {
-    injectGlobalCSS();
-    const token = localStorage.getItem("access_token");
+      const token = localStorage.getItem("access_token");
     const du = localStorage.getItem("demo_user");
 
     if (du) {
