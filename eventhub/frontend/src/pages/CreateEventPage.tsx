@@ -228,10 +228,22 @@ export function CreateEventPage({ demoMode }: { demoMode: boolean }) {
     width: "100%", padding: "9px 14px", borderRadius: 8,
     border: "1.5px solid var(--border)", fontSize: 14, boxSizing: "border-box",
     fontFamily: "Nunito, sans-serif", outline: "none",
+    background: "white", color: "#0D1B3E",
   };
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 0 60px" }}>
+    <div style={{ minHeight: "100vh", background: "#E2F5FB", padding: "40px 20px 60px", fontFamily: "Nunito, sans-serif" }}>
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+
+      {/* Кнопка отмены */}
+      <div style={{ marginBottom: 20 }}>
+        <button
+          onClick={() => navigate("/dashboard")}
+          style={{ background: "none", border: "none", color: "#4A598A", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "Nunito, sans-serif", display: "flex", alignItems: "center", gap: 6, padding: 0 }}
+        >
+          ← Отмена
+        </button>
+      </div>
 
       {/* Прогресс шагов */}
       <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 32 }}>
@@ -453,6 +465,7 @@ export function CreateEventPage({ demoMode }: { demoMode: boolean }) {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
