@@ -1,3 +1,4 @@
+import "./Dashboard.css";
 import "./App.css";
 import "./ITClusterLanding.css"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1944,71 +1945,23 @@ function OrganizerDashboard({
   ];
 
   return (
-    <div>
-      <TopBar user={user} onLogout={onLogout} />
-      <div className="dashboard-wrapper">
-      {/* SIDEBAR */}
-      <aside className="dashboard-sidebar">
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              width: 72, height: 72, borderRadius: "50%", background: "var(--primary)",
-              color: "white", fontSize: 26, fontWeight: 900, display: "flex",
-              alignItems: "center", justifyContent: "center", margin: "0 auto",
-            }}
-          >
-            {user.full_name[0]}
-          </div>
-          <h5 style={{ marginTop: 10, marginBottom: 4, fontWeight: 800, fontSize: 15 }}>
-            {user.full_name}
-          </h5>
-          <span
-            style={{
-              display: "inline-block", padding: "3px 10px", background: "#e8f0fe",
-              color: "var(--primary)", borderRadius: 100, fontSize: 11, fontWeight: 800,
-            }}
-          >
-            ORGANIZER
-          </span>
-          {user.organization && (
-            <p style={{ fontSize: 11, color: "#777", marginTop: 5 }}>
-              {user.organization}
-            </p>
-          )}
-          {demoMode && (
-            <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700, marginTop: 3 }}>
-              DEMO
-            </div>
-          )}
-        </div>
-
-        <nav className="sidebar-nav-list">
-          {navItems.map((i) => (
-            <button
-              key={i.id}
-              className="nav-link"
-              style={{
-                background: tab === i.id ? "#eef6ff" : "#f1f5f9",
-                color: tab === i.id ? "var(--primary)" : "#475569",
-              }}
-              onClick={() => setTab(i.id as any)}
-            >
-              <span style={{ marginRight: 8 }}>{i.icon}</span>
-              {i.label}
-            </button>
-          ))}
-          <button
-            className="nav-link"
-            style={{ marginTop: 8, background: "#f0fdf4", color: "#16a34a" }}
-            onClick={() => navigate("/create-event")}
-          >
-            <span style={{ marginRight: 10 }}>➕</span>Создать мероприятие
-          </button>
-        </nav>
-      </aside>
+    <div className="db-page">
+      {/* LAYOUT: main + правый сайдбар */}
+      <div className="db-wrapper">
 
       {/* MAIN CONTENT */}
-      <main className="dashboard-main-content">
+      <main className="db-main">
+        {/* Горизонтальные вкладки */}
+        <div className="db-nav-bar">
+          {navItems.map(i => (
+            <button key={i.id} className={`db-nav-btn${tab === i.id ? " active" : ""}`} onClick={() => setTab(i.id as any)}>
+              {i.icon} {i.label}
+            </button>
+          ))}
+          <button className="db-nav-btn db-nav-btn-create" onClick={() => navigate("/create-event")}>
+            ➕ Создать мероприятие
+          </button>
+        </div>
         {loading ? (
           <Spinner label="Загружаем данные..." />
         ) : (
@@ -2237,7 +2190,20 @@ function OrganizerDashboard({
           </>
         )}
       </main>
-    </div>
+
+      {/* ПРАВЫЙ САЙДБАР */}
+      <aside className="db-sidebar-right">
+        <button className="db-icon-btn" onClick={() => navigate("/")} title="Главная">🏠</button>
+        {navItems.map(i => (
+          <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`} onClick={() => setTab(i.id as any)} title={i.label}>
+            {i.icon}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <button className="db-icon-btn db-icon-btn-logout" onClick={onLogout} title="Выйти">🚪</button>
+      </aside>
+
+      </div>
     </div>
   );
 }
@@ -2826,29 +2792,18 @@ function ParticipantDashboard({
   ];
 
   return (
-    <div>
-      <TopBar user={user} onLogout={onLogout} />
-      <div className="dashboard-wrapper">
-      <aside className="dashboard-sidebar">
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 72, height: 72, borderRadius: "50%", background: roleColor, color: "white", fontSize: 26, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
-            {user.full_name[0]}
-          </div>
-          <h5 style={{ marginTop: 10, marginBottom: 4, fontWeight: 800, fontSize: 15 }}>{user.full_name}</h5>
-          <span style={{ display: "inline-block", padding: "3px 10px", background: roleBg, color: roleColor, borderRadius: 100, fontSize: 11, fontWeight: 800 }}>{roleLabel}</span>
-          {user.organization && <p style={{ fontSize: 11, color: "#777", marginTop: 5 }}>{user.organization}</p>}
-          {demoMode && <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700, marginTop: 3 }}>DEMO</div>}
-        </div>
-        <nav className="sidebar-nav-list">
-          {navItems.map((i) => (
-            <button key={i.id} className="nav-link" style={{ background: tab === i.id ? roleBg : "#f1f5f9", color: tab === i.id ? roleColor : "#475569" }} onClick={() => setTab(i.id as any)}>
-              <span style={{ marginRight: 8 }}>{i.icon}</span>{i.label}
+    <div className="db-page">
+      <div className="db-wrapper">
+
+      <main className="db-main">
+        {/* Горизонтальные вкладки */}
+        <div className="db-nav-bar">
+          {navItems.map(i => (
+            <button key={i.id} className={`db-nav-btn${tab === i.id ? " active" : ""}`} onClick={() => setTab(i.id as any)}>
+              {i.icon} {i.label}
             </button>
           ))}
-        </nav>
-      </aside>
-
-      <main className="dashboard-main-content">
+        </div>
         {loading ? <Spinner /> : (
           <>
             {tab === "program" && (
@@ -3442,7 +3397,20 @@ function ParticipantDashboard({
           </>
         )}
       </main>
-    </div>
+
+      {/* ПРАВЫЙ САЙДБАР */}
+      <aside className="db-sidebar-right">
+        <button className="db-icon-btn" onClick={() => navigate("/")} title="Главная">🏠</button>
+        {navItems.map(i => (
+          <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`} onClick={() => setTab(i.id as any)} title={i.label}>
+            {i.icon}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <button className="db-icon-btn db-icon-btn-logout" onClick={onLogout} title="Выйти">🚪</button>
+      </aside>
+
+      </div>
     </div>
   );
 }
