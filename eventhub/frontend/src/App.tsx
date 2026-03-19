@@ -16,8 +16,6 @@ import type {
   TaskStatus,
   Event as EventData,
   GlobalRole,
-
-  ChatSocketEvent,
 } from "./api/apiClient";
 
 import {
@@ -197,42 +195,41 @@ function EventsListPage({ user, onLogout, demoMode, sharedEvents }: { user: User
   const events = sharedEvents.filter((e) => e.status === "PUBLISHED");
 
   return (
-    <div>
+    <div style={{ minHeight: "100vh", background: "#E2F5FB", fontFamily: "Nunito, sans-serif" }}>
       <TopBar user={user} onLogout={onLogout} />
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px" }}>
-        <h1 style={{ fontWeight: 900, fontSize: 26, color: "var(--primary-dark)", marginBottom: 8 }}>Мероприятия</h1>
-        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 28 }}>Выберите мероприятие для просмотра программы и регистрации</p>
-        <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ padding: "48px 60px 0" }}>
+        <h1 style={{ fontWeight: 400, fontSize: "clamp(48px, 5vw, 96px)", color: "#000", lineHeight: 1, marginBottom: 16 }}>Мероприятия</h1>
+        <p style={{ fontSize: 18, color: "#475569", marginBottom: 40 }}>Выберите мероприятие для просмотра программы и регистрации</p>
+      </div>
+      <div style={{ padding: "0 60px 80px" }}>
+        <div style={{ background: "#CBF2FF", border: "1px solid #0080FC", borderRadius: 40, padding: 40 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 24 }}>
             {events.map((ev) => (
-              <div
-                key={ev.id}
-                onClick={() => navigate(`/events/${ev.id}`)}
-                style={{
-                  background: "white", borderRadius: 16, padding: "24px 28px",
-                  boxShadow: "0 2px 12px rgba(74,89,138,0.07)",
-                  border: "1.5px solid var(--border)", cursor: "pointer",
-                  transition: "border-color 0.2s, box-shadow 0.2s",
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(37,99,235,0.12)"; }}
-                onMouseOut={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "0 2px 12px rgba(74,89,138,0.07)"; }}
+              <div key={ev.id} onClick={() => navigate(`/events/${ev.id}`)}
+                style={{ background: "white", border: "1px solid #0080FC", borderRadius: 40, padding: "20px 18px 24px", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s", display: "flex", flexDirection: "column", gap: 8 }}
+                onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,128,252,0.15)"; }}
+                onMouseOut={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ fontWeight: 800, fontSize: 18, color: "var(--primary-dark)", marginBottom: 6 }}>{ev.title}</h3>
-                    {ev.description && <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.6 }}>{ev.description}</p>}
-                    <div style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--text-muted)", fontWeight: 600, flexWrap: "wrap", alignItems: "center" }}>
-                      {ev.start_date && <span>📅 {ev.start_date} — {ev.end_date}</span>}
-                      <span style={{ padding: "2px 10px", borderRadius: 100, background: "#f0fdf4", color: "#16a34a", fontWeight: 800 }}>Опубликовано</span>
-                    </div>
-                  </div>
-                  <div style={{ color: "var(--primary)", fontWeight: 800, fontSize: 13, flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
-                    Подробнее →
-                  </div>
+                <div style={{ width: "100%", aspectRatio: "196/140", background: "#CBF2FF", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40, marginBottom: 8, color: "#4A598A" }}>🗓</div>
+                <h3 style={{ fontWeight: 400, fontSize: 28, color: "#000", lineHeight: 1.1, margin: 0 }}>{ev.title}</h3>
+                {ev.description && <p style={{ fontSize: 13, color: "#6f6f6f", lineHeight: 1.5, margin: 0 }}>{ev.description.slice(0, 80)}{ev.description.length > 80 ? "..." : ""}</p>}
+                {ev.start_date && <div style={{ fontSize: 14, color: "#6F6F6F" }}>📅 {ev.start_date}{ev.end_date ? ` — ${ev.end_date}` : ""}</div>}
+                <div style={{ width: "100%", height: 1, background: "#0080FC", margin: "8px 0 4px" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: "#000" }}>Подробнее →</span>
+                  <span style={{ fontSize: 12, padding: "3px 12px", borderRadius: 100, background: "#f0fdf4", color: "#16a34a", fontWeight: 700, border: "1px solid #bbf7d0" }}>Опубликовано</span>
                 </div>
               </div>
             ))}
-            {events.length === 0 && <EmptyState icon="📋" title="Нет мероприятий" description="Скоро здесь появятся новые мероприятия." />}
           </div>
+          {events.length === 0 && (
+            <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+              <div style={{ fontWeight: 700, fontSize: 18 }}>Нет опубликованных мероприятий</div>
+              <div style={{ fontSize: 14, marginTop: 8 }}>Скоро здесь появятся новые мероприятия</div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -753,9 +750,7 @@ const LANDING_PARTNERS = [
 
 function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => void }) {
   const navigate = useNavigate();
-  const [showAllEvents, setShowAllEvents] = React.useState(false);
-
-  const visibleEvents = showAllEvents ? LANDING_EVENTS : LANDING_EVENTS.slice(0, 4);
+  const visibleEvents = LANDING_EVENTS.slice(0, 4);
 
   const handleUserClick = () => {
     if (user) navigate("/dashboard");
@@ -863,8 +858,8 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
           </div>
 
           <button className="landing-show-more" onClick={() => navigate("/events")}>
-  Показать еще
-</button>
+            Показать еще
+          </button>
         </div>
       </section>
 
@@ -888,9 +883,9 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
           ))}
         </div>
 
-        <button className="landing-show-more landing-show-more-light" style={{ margin: "40px auto 0" }}>
-          Показать еще
-        </button>
+        <button className="landing-show-more" onClick={() => navigate("/events")}>
+  Показать еще
+</button>
       </section>
 
       {/* ═══ ПАРТНЁРЫ ═══ */}
@@ -3429,14 +3424,14 @@ function ParticipantDashboard({
 
       {/* ПРАВЫЙ САЙДБАР */}
       <aside className="db-sidebar-right">
-        <button className="db-icon-btn" onClick={() => navigate("/")} title="На главную"><img src="/Home.png" alt="" /></button>
+        <button className="db-icon-btn" onClick={() => navigate("/")} title="На главную">🏠</button>
         {navItems.map(i => (
           <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`}
             onClick={() => setTab(i.id as any)} title={i.label}>{i.icon}
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button className="db-icon-btn db-icon-btn-logout" onClick={onLogout} title="Выйти"><img src="/Group.png" alt="" /></button>
+        <button className="db-icon-btn db-icon-btn-logout" onClick={onLogout} title="Выйти">🚪</button>
       </aside>
 
       </div>
