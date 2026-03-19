@@ -17,6 +17,8 @@ import type {
   Event as EventData,
   GlobalRole,
   ChatRoom,
+  ChatMessage,
+  ChatSocketEvent,
 } from "./api/apiClient";
 
 import {
@@ -751,7 +753,9 @@ const LANDING_PARTNERS = [
 
 function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => void }) {
   const navigate = useNavigate();
-  const visibleEvents = LANDING_EVENTS.slice(0, 4);
+  const [showAllEvents, setShowAllEvents] = React.useState(false);
+
+  const visibleEvents = showAllEvents ? LANDING_EVENTS : LANDING_EVENTS.slice(0, 4);
 
   const handleUserClick = () => {
     if (user) navigate("/dashboard");
@@ -858,8 +862,8 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
             ))}
           </div>
 
-          <button className="landing-show-more" onClick={() => navigate("/events")}>
-            Показать еще
+          <button className="landing-show-more" onClick={() => setShowAllEvents(!showAllEvents)}>
+            {showAllEvents ? "Скрыть" : "Показать еще"}
           </button>
         </div>
       </section>
@@ -1397,10 +1401,12 @@ function ChatView({
             try { const ev = await apiFetch<any>("GET", "/api/events/" + r.event_id); name = ev.title; } catch {}
           }
           if (r.type === "DIRECT") {
-            if (r.name) name = r.name;
-            else if (r.participants) {
+            // Бэкенд возвращает display_name — имя собеседника
+            name = r.display_name || r.name || "ЛС";
+            // Fallback через participants если есть
+            if ((name === "ЛС" || name === "Личный чат") && r.participants) {
               const other = (r.participants as any[]).find((p: any) => p.id !== user.id);
-              if (other) name = other.full_name || other.name || "ЛС";
+              if (other) name = other.full_name || other.name || name;
             }
           }
           mapped.push({ id: r.id, event_id: r.event_id || null, type: r.type, name, avatar: r.type === "GROUP" ? "🏢" : "💬" });
