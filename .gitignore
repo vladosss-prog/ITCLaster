@@ -21,3 +21,4 @@ build/
 
 DATABASE_URL=postgresql://postgres:ВАШ_ПАРОЛЬ@localhost/eventhub_db
 SECRET_KEY=придумайте_любую_длинную_строку
+.claude/

@@ -854,600 +854,119 @@ border: 3px solid #FFFFFF;
   max-width: none !important;
   box-sizing: border-box;
 }
-/* ============================================================
-   AUTH PAGES — Sign In (узкая) + Sign Up (с роботом)
-   ============================================================ */
-
-/* Общий фон обеих страниц — bg-auth.jpg */
-.auth-page-wrap {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  position: relative;
-  /* === ЗАМЕНИТЕ НА bg-auth.jpg: === */
-  background: url('/bg-auth.jpg') no-repeat center center / cover;
-  /* Фолбэк если картинки нет */
-  background-color: #b8e4ff;
-}
-/* лёгкий оверлей поверх фото */
-.auth-page-wrap::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(180, 220, 248, 0.18);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Кнопка ← На главную */
-.auth-back-btn {
-  position: fixed;
-  top: 32px;
-  left: 44px;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255,255,255,0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.8);
-  border-radius: 50px;
-  padding: 10px 22px;
-  color: #0D1B3E;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-  font-family: 'Nunito', sans-serif;
-  box-shadow: 0 2px 14px rgba(0,0,0,0.10);
-  transition: all 0.2s;
-}
-.auth-back-btn:hover {
-  background: #fff;
-  transform: translateX(-3px);
-}
-
-/* ── ВХОД — узкая карточка по центру ── */
-.auth-narrow-card {
-  position: relative;
-  z-index: 5;
-  width: min(490px, 96vw);
-  background: #fff;
-  border: 1px solid #2548B1;
-  border-radius: 48px;
-  padding: 48px 52px 44px;
-  box-shadow: 0 20px 70px rgba(0,0,0,0.22);
-  animation: authFadeUp 0.4s ease-out;
-}
-
-/* ── РЕГИСТРАЦИЯ — широкая карточка с роботом ── */
-.auth-wide-card {
-  position: relative;
-  z-index: 5;
-  width: min(980px, 96vw);
-  background: #fff;
-  border: 1px solid #2548B1;
-  border-radius: 50px;
-  display: flex;
-  align-items: stretch;
-  overflow: hidden;
-  box-shadow: 0 16px 60px rgba(0,0,0,0.20);
-  animation: authFadeUp 0.4s ease-out;
-}
-
-@keyframes authFadeUp {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* Левая тёмная панель с роботом — Figma: #101B40, inner border-radius 50px */
-.auth-robot-panel {
-  width: 340px;
-  flex-shrink: 0;
-  background: #101B40;
-  border-radius: 50px 0 0 50px;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  padding: 20px 18px;
-}
-.auth-robot-inner {
-  /* flex:1 — тянется на всю высоту карточки */
-  flex: 1;
-  width: 100%;
-  background: linear-gradient(180deg, #3a4b78 0%, #1b2a50 100%);
-  border-radius: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-}
-/* Фото руки — contain, помещается целиком */
-.auth-robot-inner img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center center;
-  border-radius: 50px;
-  padding: 10px;
-}
-.auth-robot-shine {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 50%);
-  pointer-events: none;
-  border-radius: 50px;
-  z-index: 1;
-}
-
-/* Правая форма (регистрация) */
-.auth-form-panel {
-  flex: 1;
-  padding: 40px 48px 36px;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Заголовок форм */
-.auth-heading {
-  font-size: clamp(22px, 2.6vw, 34px);
-  font-weight: 900;
-  color: #0D1B3E;
-  text-align: center;
-  margin-bottom: 18px;
-  text-decoration: underline;
-  text-underline-offset: 5px;
-}
-
-/* Блок ошибки */
-.auth-error-block {
-  background: #fef2f2;
-  color: #dc2626;
-  padding: 10px 14px;
-  border-radius: 12px;
-  margin-bottom: 16px;
-  font-size: 13px;
-  font-weight: 600;
-  border-left: 3px solid #dc2626;
-}
-
-/* Demo кнопки быстрого входа */
-.auth-demo-strip {
-  background: linear-gradient(135deg, #CBF2FF, #E2F5FB);
-  border: 1px solid #0080FC;
-  border-radius: 16px;
-  padding: 14px 18px;
-  margin-bottom: 22px;
-}
-.auth-demo-label {
-  font-size: 11px;
-  font-weight: 800;
-  color: #4A598A;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  margin-bottom: 10px;
-}
-.auth-demo-row {
-  display: flex;
-  gap: 8px;
-}
-.auth-demo-btn {
-  flex: 1;
-  padding: 8px 4px;
-  border: none;
-  border-radius: 10px;
-  font-weight: 800;
-  font-size: 11px;
-  cursor: pointer;
-  font-family: 'Nunito', sans-serif;
-  color: white;
-  transition: filter 0.15s, transform 0.15s;
-  white-space: nowrap;
-}
-.auth-demo-btn:hover {
-  filter: brightness(0.9);
-  transform: translateY(-1px);
-}
-
-/* Поле */
-.auth-field {
-  margin-bottom: 10px;
-}
-.auth-field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-.auth-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-  color: #0D1B3E;
-  margin-bottom: 4px;
-}
-.auth-input-new {
-  width: 100%;
-  height: 50px;
-  background: #fff;
-  border: 1px solid #2548B1;
-  box-shadow: 0 4px 4px rgba(0,0,0,0.18);
-  border-radius: 30px;
-  padding: 0 20px;
-  font-size: 15px;
-  font-family: 'Nunito', sans-serif;
-  color: #0D1B3E;
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  box-sizing: border-box;
-}
-.auth-input-new:focus {
-  border-color: #4A598A;
-  box-shadow: 0 4px 12px rgba(74,89,138,0.18);
-}
-.auth-input-new::placeholder { color: #ababab; }
-
-/* Запомнить / Забыли */
-.auth-remember-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-.auth-remember-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: #ababab;
-  cursor: pointer;
-}
-.auth-checkbox {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  flex-shrink: 0;
-  accent-color: #4A598A;
-}
-.auth-forgot {
-  margin-left: auto;
-  font-size: 14px;
-  color: #4A598A;
-  font-weight: 700;
-  cursor: pointer;
-}
-.auth-forgot:hover { text-decoration: underline; }
-
-/* Согласие с условиями */
-.auth-agree-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.auth-agree-text {
-  font-size: 14px;
-  color: #ababab;
-}
-
-/* Кнопка отправки */
-.auth-submit-btn {
-  display: block;
-  width: 100%;
-  height: 54px;
-  background: #4A598A;
-  color: #fff;
-  border: 1px solid #2548B1;
-  box-shadow: 0 4px 4px rgba(0,0,0,0.22);
-  border-radius: 30px;
-  font-size: 18px;
-  font-weight: 800;
-  cursor: pointer;
-  font-family: 'Nunito', sans-serif;
-  transition: all 0.2s;
-  margin-bottom: 18px;
-}
-.auth-submit-btn:hover {
-  background: #44517B;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(74,89,138,0.28);
-}
-.auth-submit-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* Переключатель вход ↔ регистрация */
-.auth-switch-row {
-  text-align: center;
-  font-size: 15px;
-  color: #ababab;
-}
-.auth-switch-row span {
-  color: #4A598A;
-  font-weight: 800;
-  cursor: pointer;
-}
-.auth-switch-row span:hover { text-decoration: underline; }
-
-/* Адаптив */
-@media (max-width: 800px) {
-  .auth-wide-card { flex-direction: column; }
-  .auth-robot-panel { width: 100%; border-radius: 48px 48px 0 0; padding: 20px; }
-  .auth-robot-inner { min-height: 160px; }
-  .auth-form-panel { padding: 32px 24px; }
-  .auth-field-row { grid-template-columns: 1fr; }
-  .auth-narrow-card { padding: 36px 28px; }
-  .auth-back-btn { top: 16px; left: 16px; padding: 8px 16px; font-size: 13px; }
-}
-
 
 /* ════════════════════════════════════════════════════════════
-   DASHBOARD — Figma точный
+   LANDING MOBILE — дополнение к существующему адаптиву
    ════════════════════════════════════════════════════════════ */
 
-:root {
-  --primary: #4A598A;
-  --primary-dark: #0D1B3E;
-  --border: #e2e8f0;
-  --bg-light: #f8fafc;
-  --bg-medium: #e8f0fe;
-  --text-muted: #94a3b8;
-}
-
-/* ── Страница дашборда ── */
-.db-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background: #E2F5FB;
-  font-family: 'Nunito', sans-serif;
-}
-
-/* ── Шапка профиля — Figma: #E2F5FB, h=440, аватар 320px ── */
-.db-profile-header {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  padding: 24px 40px;
-  background: #E2F5FB;
-  flex-shrink: 0;
-}
-
-.db-profile-avatar {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  background: #44517B;
-  color: white;
-  font-size: 40px;
-  font-weight: 900;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.db-profile-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.db-profile-name {
-  font-size: 48px;
-  font-weight: 400;
-  color: #000;
-  line-height: 1;
-}
-
-.db-profile-role-badge {
-  display: inline-block;
-  padding: 6px 20px;
-  background: #44517B;
-  color: white;
-  border-radius: 40px;
-  font-size: 18px;
-  font-weight: 400;
-  width: fit-content;
-}
-
-.db-profile-contacts {
-  font-size: 16px;
-  color: #475569;
-}
-
-.db-profile-logout {
-  padding: 10px 28px;
-  background: transparent;
-  border: 1.5px solid #44517B;
-  color: #44517B;
-  border-radius: 100px;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-  font-family: 'Nunito', sans-serif;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-.db-profile-logout:hover { background: #44517B; color: white; }
-
-/* ── Тело: main + сайдбар ── */
-.db-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-/* ── Основной контент — Figma: Rectangle 48: white, border 8px #44517B, radius 30 ── */
-.db-main {
-  flex: 1;
-  padding: 20px 28px;
-  overflow-y: auto;
-  background: white;
-  border: 8px solid #44517B;
-  border-radius: 30px;
-  margin: 0 0 16px 16px;
-  min-height: calc(100vh - 180px);
-  box-sizing: border-box;
-}
-
-/* ── Правый сайдбар — Figma: w=95, #BFD9F1 ── */
-.db-sidebar-right {
-  width: 95px;
-  background: #BFD9F1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px 0;
-  gap: 12px;
-  flex-shrink: 0;
-  min-height: 100%;
-}
-
-.db-icon-btn {
-  width: 60px;
-  height: 60px;
-  background: #44517B;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  transition: background 0.15s, transform 0.1s;
-  flex-shrink: 0;
-  color: white;
-  line-height: 1;
-}
-.db-icon-btn:hover { background: #4A598A; transform: scale(1.05); }
-.db-icon-btn.active { background: #6B7AAA; box-shadow: inset 0 0 0 3px rgba(255,255,255,0.25); }
-.db-icon-btn-logout { background: rgba(220,38,38,0.15); color: #dc2626; }
-.db-icon-btn-logout:hover { background: #dc2626; color: white; }
-
-/* ── Вкладки ── */
-.db-nav-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.db-nav-btn {
-  padding: 9px 18px;
-  background: #f1f5f9;
-  color: #475569;
-  border: none;
-  border-radius: 100px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: 'Nunito', sans-serif;
-  transition: background 0.15s;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.db-nav-btn:hover { background: #e2e8f0; }
-.db-nav-btn.active { background: #44517B; color: white; }
-.db-nav-btn-create { background: #f0fdf4; color: #16a34a; }
-.db-nav-btn-create:hover { background: #dcfce7; }
-
-/* ── TopBar ── */
-.landing-topbar { width: 100%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.08); position: sticky; top: 0; z-index: 200; }
-.landing-nav-pill { max-width: 1600px; margin: 0 auto; padding: 0 32px; height: 64px; display: flex; align-items: center; gap: 32px; }
-.landing-nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; flex-shrink: 0; }
-.landing-nav-logo-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
-.landing-nav-logo-icon img { width: 100%; height: 100%; object-fit: contain; }
-.landing-nav-logo-text { font-weight: 900; font-size: 15px; line-height: 1.1; color: var(--primary-dark); }
-.landing-topbar .landing-nav-links { display: flex; gap: 24px; flex: 1; justify-content: center; }
-.landing-topbar .landing-nav-links a { font-size: 13px; font-weight: 700; color: #475569; cursor: pointer; text-decoration: none; transition: color 0.15s; white-space: nowrap; }
-.landing-topbar .landing-nav-links a:hover { color: var(--primary); }
-.nav-user-info { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.nav-user-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--primary); color: white; font-size: 14px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
-.nav-user-name { font-size: 13px; font-weight: 700; color: var(--primary-dark); white-space: nowrap; }
-.nav-logout-btn { padding: 6px 16px; background: transparent; border: 1.5px solid var(--primary); color: var(--primary); border-radius: 100px; font-weight: 700; font-size: 12px; cursor: pointer; font-family: 'Nunito', sans-serif; }
-.nav-logout-btn:hover { background: var(--primary); color: white; }
-
-/* ── Канбан — 3 колонки ── */
-.kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
-.kanban-col { background: #f8fafc; border-radius: 14px; padding: 16px 12px; min-height: 200px; border: 1.5px solid var(--border); }
-.kanban-card { background: white; border-radius: 10px; padding: 14px; margin-bottom: 10px; border: 1.5px solid var(--border); box-shadow: 0 1px 6px rgba(74,89,138,0.07); }
-.kanban-card:hover { box-shadow: 0 4px 16px rgba(74,89,138,0.13); }
-
-/* ── Старый wrapper (совместимость) ── */
-.dashboard-wrapper { display: flex; flex: 1; min-height: 0; }
-.dashboard-sidebar { display: none; } /* скрываем старый левый sidebar */
-.dashboard-main-content { flex: 1; padding: 24px 28px; overflow-y: auto; }
-.sidebar-nav-list { display: none; }
-.nav-link { display: none; }
-
-/* ── Event detail ── */
-.event-detail-page { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
-.comment-card { background: #f8fafc; border-radius: 10px; padding: 12px 16px; border: 1px solid var(--border); margin-bottom: 10px; }
-
-/* ── Чат ── */
-.chat-wrapper { display: flex; height: calc(100vh - 220px); min-height: 500px; border: 1.5px solid var(--border); border-radius: 16px; overflow: hidden; }
-.chat-rooms-list { width: 260px; flex-shrink: 0; border-right: 1.5px solid var(--border); display: flex; flex-direction: column; background: #f8fafc; }
-.chat-rooms-header { padding: 14px 16px; font-weight: 800; font-size: 13px; color: var(--primary-dark); border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-.chat-room-item { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
-.chat-room-item:hover { background: #eef6ff; }
-.chat-room-item.active { background: #e8f0fe; }
-.chat-messages-area { flex: 1; display: flex; flex-direction: column; background: white; min-width: 0; }
-.chat-messages-header { padding: 14px 20px; font-weight: 800; font-size: 15px; color: var(--primary-dark); border-bottom: 1.5px solid var(--border); flex-shrink: 0; }
-.chat-messages-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
-.chat-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 20px; }
-.chat-msg { max-width: 70%; padding: 10px 14px; border-radius: 16px; font-size: 13px; line-height: 1.5; word-break: break-word; }
-.chat-msg.mine { background: var(--primary); color: white; border-bottom-right-radius: 4px; }
-.chat-msg.theirs { background: #f1f5f9; color: var(--primary-dark); border-bottom-left-radius: 4px; }
-.chat-input-bar { display: flex; gap: 10px; padding: 12px 16px; border-top: 1.5px solid var(--border); background: white; flex-shrink: 0; }
-.chat-input-bar input { flex: 1; padding: 10px 16px; border: 1.5px solid var(--border); border-radius: 100px; font-size: 13px; font-family: 'Nunito', sans-serif; outline: none; background: #f8fafc; color: var(--primary-dark); }
-.chat-input-bar input:focus { border-color: var(--primary); background: white; }
-.chat-input-bar button { padding: 10px 22px; background: var(--primary); color: white; border: none; border-radius: 100px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: 'Nunito', sans-serif; }
-.chat-input-bar button:hover { background: var(--primary-dark); }
-
-/* ── Календарь ── */
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.cal-cell { min-height: 80px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 8px; background: white; box-sizing: border-box; overflow: hidden; }
-.cal-cell.today { border-color: var(--primary); background: #eef6ff; }
-.cal-cell.other-month { background: #f8fafc; opacity: 0.5; }
-.cal-day-num { font-size: 13px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; }
-.cal-cell.today .cal-day-num { color: var(--primary); }
-.cal-dot { font-size: 9px; font-weight: 700; padding: 2px 4px; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cal-nav-btn { padding: 8px 16px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Nunito', sans-serif; color: var(--primary-dark); }
-.cal-nav-btn:hover { background: #e2e8f0; }
-
-/* ── EventManagePage Канбан ── */
-.em-kanban-board {
-  display: flex;
-  gap: 16px;
-  padding-bottom: 8px;
-}
-
-.em-kanban-col {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
 @media (max-width: 768px) {
-  .em-kanban-board {
+  /* ── Навбар ── */
+  .landing-nav {
+    left: 8px !important;
+    right: 8px !important;
+    top: 8px !important;
+    height: auto !important;
+    padding: 12px 16px !important;
+    border-radius: 20px !important;
+  }
+  .landing-nav-links {
+    display: none !important; /* бургер меню не делаем — скрываем */
+  }
+  .landing-nav-logo-text {
+    font-size: 14px;
+  }
+  .landing-nav-logo-img {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* ── Hero ── */
+  .landing-hero-inner {
+    padding-top: 100px !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+    padding-bottom: 40px !important;
+  }
+  .landing-hero-title {
+    font-size: clamp(28px, 8vw, 52px) !important;
+  }
+  .landing-hero-subtitle {
+    font-size: clamp(14px, 4vw, 20px) !important;
+  }
+  .landing-hero-photo { display: none !important; }
+  .landing-hero-asterisk-1 { display: none; }
+
+  /* ── О Кластере ── */
+  .landing-about {
+    padding: 40px 20px 60px !important;
     flex-direction: column;
+  }
+  .landing-about-asterisk { display: none !important; }
+  .landing-about-photo { display: none !important; }
+  .landing-facts-grid {
+    grid-template-columns: 1fr 1fr !important;
     gap: 12px;
   }
-  .em-kanban-col {
-    width: 100%;
+  .landing-fact-card { min-height: 120px; }
+  .landing-fact-number { font-size: clamp(28px, 7vw, 48px) !important; }
+  .landing-about-title { font-size: clamp(32px, 8vw, 60px); }
+  .landing-about-text { font-size: 14px; }
+
+  /* ── Мероприятия ── */
+  .landing-events { padding-left: 12px !important; padding-right: 12px !important; }
+  .landing-events-title { font-size: clamp(28px, 8vw, 60px); margin-left: 12px !important; }
+  .landing-events-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
   }
+  .landing-events-container { margin: 0 12px !important; }
+  .landing-events-asterisk { display: none !important; }
+  .landing-show-more {
+    margin: 20px auto;
+    font-size: 16px !important;
+    padding: 14px 40px !important;
+  }
+
+  /* ── Новости ── */
+  .landing-news { padding-left: 12px !important; padding-right: 12px !important; }
+  .landing-news-title { font-size: clamp(28px, 8vw, 60px); margin-left: 12px !important; }
+  .landing-news-grid {
+    grid-template-columns: 1fr !important;
+    margin: 0 12px !important;
+  }
+  .landing-news-card { flex-direction: column; height: auto !important; }
+  .landing-news-photo { width: 100% !important; height: 180px !important; }
+  .landing-news-divider { display: none; }
+  .landing-news-asterisk { display: none !important; }
+
+  /* ── Партнёры ── */
+  .landing-partners-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .landing-partners-asterisk { display: none !important; }
+  .landing-partners-title { font-size: clamp(28px, 8vw, 60px); }
+
+  /* ── Контакты ── */
+  .landing-contacts { padding: 0 16px 40px !important; }
+  .landing-contacts-inner { flex-direction: column !important; gap: 20px; }
+  .landing-contacts-card { padding: 28px 20px !important; }
+  .landing-qr-box { width: 80px !important; height: 80px !important; }
+
+  /* ── Scroll snap на мобиле — отключаем (неудобно) ── */
+  html { scroll-snap-type: none !important; }
+  .landing-hero,
+  .landing-about,
+  .landing-events,
+  .landing-news,
+  .landing-partners,
+  .landing-contacts {
+    scroll-snap-align: none !important;
+    scroll-snap-stop: normal !important;
+    min-height: auto !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-facts-grid { grid-template-columns: 1fr !important; }
+  .landing-partners-grid { grid-template-columns: repeat(2, 1fr) !important; }
 }
