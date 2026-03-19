@@ -1340,7 +1340,7 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
     : 0;
 
   return (
-    <div style={{ padding: "0 0 40px" }}>
+    <div style={{ padding: "0 0 40px", minHeight: "100vh", background: "#E2F5FB", fontFamily: "Nunito, sans-serif" }}>
       {/* ШАПКА МЕРОПРИЯТИЯ */}
       <div style={{
         background: "white", borderRadius: 16, padding: "24px 28px",
@@ -1432,8 +1432,8 @@ export function EventManagePage({ demoMode }: { demoMode: boolean }) {
           <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
             padding: "8px 20px", border: "none", borderRadius: 8,
             fontWeight: 800, fontSize: 13, cursor: "pointer",
-            background: activeTab === tab.id ? "white" : "transparent",
-            color: activeTab === tab.id ? "var(--primary)" : "var(--text-muted)",
+            background: activeTab === tab.id ? "#4A598A" : "white",
+            color: activeTab === tab.id ? "white" : "#475569",
             boxShadow: activeTab === tab.id ? "0 2px 8px rgba(74,89,138,0.1)" : "none",
             fontFamily: "Nunito, sans-serif", transition: "all 0.2s",
           }}>
