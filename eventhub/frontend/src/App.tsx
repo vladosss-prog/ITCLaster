@@ -862,9 +862,9 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
             ))}
           </div>
 
-          <button className="landing-show-more" onClick={() => setShowAllEvents(!showAllEvents)}>
-            {showAllEvents ? "Скрыть" : "Показать еще"}
-          </button>
+          <button className="landing-show-more" onClick={() => navigate("/events")}>
+  Показать еще
+</button>
         </div>
       </section>
 
