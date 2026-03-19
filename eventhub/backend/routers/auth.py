@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
 from fastapi import APIRouter, Depends, Header, HTTPException
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -63,6 +63,19 @@ def get_current_user(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ) -> User:
     return _get_current_user(db=db, authorization=authorization)
+
+
+def get_current_user_optional(
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> Optional[User]:
+    """Возвращает User если токен валиден, None если нет токена."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return _get_current_user(db=db, authorization=authorization)
+    except Exception:
+        return None
 
 
 class UserOut(BaseModel):
@@ -138,7 +151,7 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
 
     payload = {
         "sub": user.id,
-        "exp": datetime.utcnow() + timedelta(minutes=expire_minutes),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=expire_minutes),
     }
     token = jwt.encode(payload, secret_key, algorithm=algorithm)
 
@@ -148,4 +161,87 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(current_user, from_attributes=True)
+
+
+class UserUpdateIn(BaseModel):
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    organization: Optional[str] = None
+    photo_url: Optional[str] = None
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    body: UserUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """Редактирование профиля текущего пользователя."""
+    data = body.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(current_user, field, value)
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user, from_attributes=True)
+
+
+class PromoteIn(BaseModel):
+    user_id: str
+    role: str = Field(..., pattern="^(ORGANIZER|PARTICIPANT)$")
+
+
+@router.post("/promote", response_model=UserOut)
+def promote_user(
+    body: PromoteIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """
+    Промоушн пользователя в ORGANIZER (или обратно).
+    Доступно только ORGANIZER'ам.
+    """
+    if current_user.global_role != "ORGANIZER":
+        raise HTTPException(status_code=403, detail="Только организатор может менять роли")
+
+    target = db.get(User, body.user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    target.global_role = body.role
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return UserOut.model_validate(target, from_attributes=True)
+
+
+@router.post("/register-organizer", response_model=UserOut)
+def register_organizer(body: RegisterIn, db: Session = Depends(get_db)) -> UserOut:
+    """
+    Регистрация организатора. Первый пользователь автоматически ORGANIZER,
+    далее — требуется промоушн.
+    """
+    stmt = select(User).where(User.email == body.email)
+    existing = db.execute(stmt).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Пользователь с таким email уже существует")
+
+    # Если в системе нет ни одного ORGANIZER — первый получает роль автоматически
+    org_count_stmt = select(func.count(User.id)).where(User.global_role == "ORGANIZER")
+    org_count = db.execute(org_count_stmt).scalar_one() or 0
+
+    password_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
+    role = "ORGANIZER" if org_count == 0 else "PARTICIPANT"
+
+    user = User(
+        email=body.email,
+        password_hash=password_hash,
+        full_name=body.full_name,
+        organization=body.organization,
+        global_role=role,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user, from_attributes=True)
 

@@ -1,25 +1,11 @@
 import React from "react";
 
-export function EmptyState({
-  icon,
-  title,
-  description,
-  className = "",
-  actions,
-}: {
-  icon?: string;
-  title: string;
-  description?: string;
-  className?: string;
-  actions?: React.ReactNode;
-}) {
+export function EmptyState({ icon, title, description }: { icon: string; title: string; description: string }) {
   return (
-    <div className={`ui-empty ${className}`.trim()}>
-      {icon ? <div className="ui-empty__icon">{icon}</div> : null}
-      <div className="ui-empty__title">{title}</div>
-      {description ? <div className="ui-empty__desc">{description}</div> : null}
-      {actions ? <div className="ui-empty__actions">{actions}</div> : null}
+    <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div>
+      <div style={{ fontWeight: 800, fontSize: 16, color: "var(--primary-dark)", marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 14 }}>{description}</div>
     </div>
   );
 }
-

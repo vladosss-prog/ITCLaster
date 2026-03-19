@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set
 from uuid import uuid4
 
@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _new_id() -> str:
@@ -45,6 +45,7 @@ class ChatRoomOut(BaseModel):
     id: str
     event_id: Optional[str] = None
     type: str
+    display_name: str = ""
 
 
 class ChatMessageOut(BaseModel):
@@ -81,7 +82,7 @@ class ConnectionManager:
         await websocket.send_json(
             {
                 "type": "history",
-                "items": [ChatMessageOut.model_validate(m, from_attributes=True).model_dump() for m in last_messages],
+                "items": [ChatMessageOut.model_validate(m, from_attributes=True).model_dump(mode="json") for m in last_messages],
             }
         )
 
@@ -134,13 +135,13 @@ def _ensure_room_access(db: Session, room: ChatRoom, user_id: str) -> None:
         stmt = select(EventMembership.id).where(
             and_(EventMembership.user_id == user_id, EventMembership.event_id == room.event_id)
         )
-        if db.execute(stmt).scalar_one_or_none() is None:
+        if db.execute(stmt).first() is None:
             raise HTTPException(status_code=403, detail="Нет доступа к чату мероприятия")
         return
 
     # DIRECT: доступ, если пользователь уже писал в этой комнате
     stmt = select(ChatMessage.id).where(and_(ChatMessage.room_id == room.id, ChatMessage.user_id == user_id)).limit(1)
-    if db.execute(stmt).scalar_one_or_none() is None:
+    if db.execute(stmt).first() is None:
         raise HTTPException(status_code=403, detail="Нет доступа к личному чату")
 
 
@@ -165,7 +166,38 @@ def my_rooms(current_user: User = Depends(get_current_user), db: Session = Depen
         stmt = rooms_by_messages
 
     rooms = list(db.execute(stmt).scalars().all())
-    return [ChatRoomOut.model_validate(r, from_attributes=True) for r in rooms]
+
+    # B-7: вычисляем display_name для каждой комнаты
+    from models import Event
+    result: List[ChatRoomOut] = []
+    for r in rooms:
+        display_name = "Чат"
+        if r.type == "GROUP":
+            if r.event_id:
+                event = db.get(Event, r.event_id)
+                display_name = event.title if event else "Групповой чат"
+            else:
+                display_name = "Групповой чат"
+        elif r.type == "DIRECT":
+            # Найти второго участника через сообщения
+            other_stmt = (
+                select(distinct(ChatMessage.user_id))
+                .where(and_(ChatMessage.room_id == r.id, ChatMessage.user_id != current_user.id))
+                .limit(1)
+            )
+            other_id = db.execute(other_stmt).scalar_one_or_none()
+            if other_id:
+                other_user = db.get(User, other_id)
+                display_name = other_user.full_name if other_user else "Личный чат"
+            else:
+                display_name = "Личный чат"
+        result.append(ChatRoomOut(
+            id=r.id,
+            event_id=r.event_id,
+            type=r.type,
+            display_name=display_name,
+        ))
+    return result
 
 
 @router.post("/direct", response_model=ChatRoomOut)
@@ -200,13 +232,16 @@ def create_direct_chat(
 
     room = ChatRoom(id=_new_id(), event_id=None, type="DIRECT")
     db.add(room)
+    db.flush()
+
+    # Fix #9: создаём системные сообщения от ОБОИХ участников,
+    # чтобы _ensure_room_access пропускал обоих
+    msg1 = ChatMessage(id=_new_id(), room_id=room.id, user_id=current_user.id, text="Начат личный чат", created_at=_now())
+    msg2 = ChatMessage(id=_new_id(), room_id=room.id, user_id=other.id, text="Начат личный чат", created_at=_now())
+    db.add(msg1)
+    db.add(msg2)
     db.commit()
     db.refresh(room)
-
-    # Чтобы у создателя был доступ (в модели нет участников комнаты) — создаём первое сообщение
-    msg = ChatMessage(id=_new_id(), room_id=room.id, user_id=current_user.id, text="Начат личный чат", created_at=_now())
-    db.add(msg)
-    db.commit()
 
     return ChatRoomOut.model_validate(room, from_attributes=True)
 
@@ -316,7 +351,7 @@ async def websocket_chat(room_id: str, websocket: WebSocket, db: Session = Depen
             db.commit()
             db.refresh(msg)
 
-            out = ChatMessageOut.model_validate(msg, from_attributes=True).model_dump()
+            out = ChatMessageOut.model_validate(msg, from_attributes=True).model_dump(mode="json")
             await manager.broadcast(room_id=room_id, message={"type": "message", "item": out})
     except WebSocketDisconnect:
         manager.disconnect(room_id=room_id, websocket=websocket)

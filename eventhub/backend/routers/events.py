@@ -1,22 +1,40 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import delete as sa_delete, or_, select
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Event, EventMembership, Report, Section, User
-from routers.auth import get_current_user
+from models import (
+    ChatMessage,
+    ChatRoom,
+    Event,
+    EventMembership,
+    Report,
+    ReportComment,
+    ReportFeedback,
+    Section,
+    SectionReport,
+    Task,
+    User,
+    UserReportSchedule,
+)
+from routers.auth import get_current_user, get_current_user_optional
+from routers.chat import add_user_to_event_chat
 
 
 router = APIRouter()
 users_router = APIRouter()
 sections_router = APIRouter()
 reports_router = APIRouter()
+
+
+# ---------- Schemas ----------
 
 
 class EventCreateIn(BaseModel):
@@ -57,6 +75,8 @@ class SectionOut(BaseModel):
     location: Optional[str] = None
     section_start: Optional[datetime] = None
     section_end: Optional[datetime] = None
+    moderator_id: Optional[str] = None       # Fix #23: добавлено
+    tech_notes: Optional[str] = None          # Fix #23: добавлено
     readiness_percent: int
 
     class Config:
@@ -97,6 +117,7 @@ class ReportOut(BaseModel):
     section_id: str
     title: str
     speaker_id: Optional[str] = None
+    speaker_name: Optional[str] = None   # резолвится при выдаче
     speaker_confirmed: bool
     presentation_format: Optional[str] = None
     start_time: Optional[datetime] = None
@@ -121,6 +142,65 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
+class EventUpdateIn(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[str] = None
+
+
+class SectionUpdateIn(BaseModel):
+    title: Optional[str] = None
+    format: Optional[str] = None
+    location: Optional[str] = None
+    section_start: Optional[datetime] = None
+    section_end: Optional[datetime] = None
+    tech_notes: Optional[str] = None
+    readiness_percent: Optional[int] = None
+
+
+class ReportUpdateIn(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    presentation_format: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    speaker_confirmed: Optional[bool] = None
+
+
+# ---------- Helpers ----------
+
+
+def _escape_like(value: str) -> str:
+    """Экранировать спецсимволы LIKE/ILIKE (%, _)."""
+    return re.sub(r"([%_])", r"\\\1", value)
+
+
+def _auto_add_to_event_chat(event_id: str, user_id: str, msg_text: str, db: Session) -> None:
+    """B-8: при назначении куратора/спикера — автоматически добавлять в чат мероприятия."""
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    chat_room = db.execute(
+        select(ChatRoom).where(ChatRoom.event_id == event_id, ChatRoom.type == "GROUP")
+    ).scalar_one_or_none()
+
+    if chat_room:
+        system_msg = ChatMessage(
+            id=str(uuid4()),
+            room_id=chat_room.id,
+            user_id=user_id,
+            text=msg_text,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(system_msg)
+        db.commit()
+
+
+# ---------- Events ----------
+
+
 @router.post("/", response_model=EventOut)
 def create_event(
     body: EventCreateIn,
@@ -136,8 +216,8 @@ def create_event(
         status="DRAFT",
     )
     db.add(event)
-    db.commit()
-    db.refresh(event)
+    # Fix #13: flush вместо commit — получаем event.id, но сохраняем транзакцию
+    db.flush()
 
     membership = EventMembership(
         user_id=current_user.id,
@@ -145,7 +225,12 @@ def create_event(
         context_role="OWNER",
     )
     db.add(membership)
+    # Один commit для обеих сущностей — атомарная операция
     db.commit()
+    db.refresh(event)
+
+    # Автоматически создаём GROUP-чат для мероприятия
+    add_user_to_event_chat(event.id, db)
 
     return EventOut.model_validate(event, from_attributes=True)
 
@@ -168,6 +253,24 @@ def list_events(
                 Event.id.in_(select(membership_event_ids.c.event_id)),
             )
         )
+        .distinct()          # Fix #20: убираем дубли
+        .offset(skip)
+        .limit(limit)
+    )
+    events = list(db.execute(stmt).scalars().all())
+    return [EventOut.model_validate(e, from_attributes=True) for e in events]
+
+
+@router.get("/public", response_model=List[EventOut])
+def list_events_public(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> List[EventOut]:
+    """Публичный список мероприятий (без авторизации). Только PUBLISHED."""
+    stmt = (
+        select(Event)
+        .where(Event.status == "PUBLISHED")
         .offset(skip)
         .limit(limit)
     )
@@ -178,22 +281,62 @@ def list_events(
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(
     event_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> EventOut:
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
 
+    # PUBLISHED мероприятия доступны всем
+    if event.status == "PUBLISHED":
+        return EventOut.model_validate(event, from_attributes=True)
+
+    # Для DRAFT/FINISHED нужна авторизация и членство
+    if not current_user:
+        raise HTTPException(status_code=403, detail="Нет доступа к мероприятию")
+
     membership_stmt = select(EventMembership.id).where(
         EventMembership.user_id == current_user.id,
         EventMembership.event_id == event_id,
     )
-    has_membership = db.execute(membership_stmt).scalar_one_or_none() is not None
+    has_membership = db.execute(membership_stmt).first() is not None
     if event.owner_id != current_user.id and not has_membership:
         raise HTTPException(status_code=403, detail="Нет доступа к мероприятию")
 
     return EventOut.model_validate(event, from_attributes=True)
+
+
+@router.get("/{event_id}/public", response_model=EventOut)
+def get_event_public(
+    event_id: str,
+    db: Session = Depends(get_db),
+) -> EventOut:
+    """Публичная страница мероприятия (без авторизации). Только PUBLISHED."""
+    event = db.get(Event, event_id)
+    if not event or event.status != "PUBLISHED":
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    return EventOut.model_validate(event, from_attributes=True)
+
+
+# Fix #24: GET-список секций мероприятия
+@router.get("/{event_id}/sections", response_model=List[SectionOut])
+def list_sections(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[SectionOut]:
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    stmt = (
+        select(Section)
+        .where(Section.event_id == event_id)
+        .order_by(Section.section_start)
+    )
+    sections = list(db.execute(stmt).scalars().all())
+    return [SectionOut.model_validate(s, from_attributes=True) for s in sections]
 
 
 @router.post("/{event_id}/sections", response_model=SectionOut)
@@ -206,8 +349,17 @@ def create_section(
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
-    if event.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Только владелец мероприятия может создавать секции")
+    is_owner = event.owner_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == event_id,
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Только владелец или куратор мероприятия может создавать секции")
 
     section = Section(
         event_id=event_id,
@@ -249,26 +401,161 @@ def assign_curator(
         section.curator_id = body.user_id
         db.add(section)
 
+    # Fix #7: проверяем существующую роль, не перезаписываем OWNER/SPEAKER
     stmt = select(EventMembership).where(
         EventMembership.user_id == body.user_id,
         EventMembership.event_id == event_id,
     )
-    membership = db.execute(stmt).scalar_one_or_none()
-    if membership:
-        membership.context_role = "CURATOR"
-        membership.section_id = body.section_id
-    else:
-        membership = EventMembership(
-            user_id=body.user_id,
-            event_id=event_id,
-            context_role="CURATOR",
-            section_id=body.section_id,
-        )
-        db.add(membership)
+    existing = db.execute(stmt).scalars().first()
+    if existing:
+        if existing.context_role == "OWNER":
+            raise HTTPException(
+                status_code=409,
+                detail="Пользователь является владельцем мероприятия, назначение куратором невозможно",
+            )
+        # Если уже CURATOR — обновляем section_id; если SPEAKER — создаём отдельный membership
+        if existing.context_role == "CURATOR":
+            existing.section_id = body.section_id
+            db.commit()
+            db.refresh(existing)
+            return MembershipOut.model_validate(existing, from_attributes=True)
+        # Для SPEAKER/PARTICIPANT — создаём новую запись с ролью CURATOR
+        # (поддержка множественных ролей через отдельные записи)
+
+    membership = EventMembership(
+        user_id=body.user_id,
+        event_id=event_id,
+        context_role="CURATOR",
+        section_id=body.section_id,
+    )
+    db.add(membership)
+
+    # Меняем global_role на CURATOR если у пользователя роль PARTICIPANT
+    if target_user.global_role == "PARTICIPANT":
+        target_user.global_role = "CURATOR"
+        db.add(target_user)
 
     db.commit()
     db.refresh(membership)
+
+    # B-8: автоматически добавляем куратора в чат мероприятия
+    _auto_add_to_event_chat(event_id, body.user_id, "Пользователь назначен куратором секции", db)
+
     return MembershipOut.model_validate(membership, from_attributes=True)
+
+
+@router.get("/{event_id}/curators", response_model=List[MembershipOut])
+def list_curators(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[MembershipOut]:
+    """Список кураторов мероприятия."""
+    stmt = select(EventMembership).where(
+        EventMembership.event_id == event_id,
+        EventMembership.context_role == "CURATOR",
+    )
+    return [MembershipOut.model_validate(m, from_attributes=True) for m in db.execute(stmt).scalars().all()]
+
+
+@router.post("/{event_id}/speakers", response_model=MembershipOut)
+def assign_speaker_to_event(
+    event_id: str,
+    body: AssignCuratorIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MembershipOut:
+    """Назначить спикера на мероприятие (без привязки к докладу). Только владелец."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец мероприятия может назначать спикеров")
+
+    target_user = db.get(User, body.user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Проверяем существующую роль
+    stmt = select(EventMembership).where(
+        EventMembership.user_id == body.user_id,
+        EventMembership.event_id == event_id,
+    )
+    existing = db.execute(stmt).scalars().first()
+    if existing:
+        if existing.context_role == "OWNER":
+            raise HTTPException(status_code=409, detail="Пользователь является владельцем мероприятия")
+        if existing.context_role == "SPEAKER":
+            return MembershipOut.model_validate(existing, from_attributes=True)
+
+    membership = EventMembership(
+        user_id=body.user_id,
+        event_id=event_id,
+        context_role="SPEAKER",
+        section_id=body.section_id,
+    )
+    db.add(membership)
+
+    # Меняем global_role на SPEAKER если у пользователя роль PARTICIPANT
+    if target_user.global_role == "PARTICIPANT":
+        target_user.global_role = "SPEAKER"
+        db.add(target_user)
+
+    db.commit()
+    db.refresh(membership)
+
+    _auto_add_to_event_chat(event_id, body.user_id, "Пользователь назначен спикером", db)
+
+    return MembershipOut.model_validate(membership, from_attributes=True)
+
+
+
+def list_speakers(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[MembershipOut]:
+    """Список спикеров мероприятия."""
+    stmt = select(EventMembership).where(
+        EventMembership.event_id == event_id,
+        EventMembership.context_role == "SPEAKER",
+    )
+    return [MembershipOut.model_validate(m, from_attributes=True) for m in db.execute(stmt).scalars().all()]
+
+
+@router.delete("/{event_id}/curators/{user_id}", status_code=204)
+def remove_curator(
+    event_id: str,
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Снять куратора с мероприятия (только владелец)."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец может снимать кураторов")
+
+    stmt = select(EventMembership).where(
+        EventMembership.user_id == user_id,
+        EventMembership.event_id == event_id,
+        EventMembership.context_role == "CURATOR",
+    )
+    membership = db.execute(stmt).scalars().first()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Куратор не найден")
+
+    # Сброс curator_id у секции
+    if membership.section_id:
+        section = db.get(Section, membership.section_id)
+        if section and section.curator_id == user_id:
+            section.curator_id = None
+            db.add(section)
+
+    db.delete(membership)
+    db.commit()
+    return None
 
 
 @sections_router.post("/{section_id}/reports", response_model=ReportOut)
@@ -285,8 +572,17 @@ def create_report(
     event = db.get(Event, section.event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено для секции")
-    if event.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Только владелец мероприятия может создавать доклады")
+    is_owner = event.owner_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == event.id,
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Только владелец или куратор мероприятия может создавать доклады")
 
     report = Report(
         section_id=section_id,
@@ -301,6 +597,115 @@ def create_report(
     db.commit()
     db.refresh(report)
     return ReportOut.model_validate(report, from_attributes=True)
+
+
+
+@sections_router.patch("/{section_id}", response_model=SectionOut)
+def patch_section(
+    section_id: str,
+    body: SectionUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SectionOut:
+    """Обновить секцию по id (владелец мероприятия или куратор)."""
+    section = db.get(Section, section_id)
+    if not section:
+        raise HTTPException(status_code=404, detail="Секция не найдена")
+
+    event = db.get(Event, section.event_id)
+    is_owner = event and event.owner_id == current_user.id
+    is_curator = section.curator_id == current_user.id
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Нет прав на редактирование секции")
+
+    for field in ("title", "format", "location", "section_start", "section_end", "tech_notes", "readiness_percent"):
+        value = getattr(body, field, None)
+        if value is not None:
+            setattr(section, field, value)
+
+    db.add(section)
+    db.commit()
+    db.refresh(section)
+    return SectionOut.model_validate(section, from_attributes=True)
+
+
+@sections_router.delete("/{section_id}", status_code=204)
+def delete_section_by_id(
+    section_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Удалить секцию по id (владелец или куратор)."""
+    from sqlalchemy import delete as sa_delete
+    section = db.get(Section, section_id)
+    if not section:
+        raise HTTPException(status_code=404, detail="Секция не найдена")
+
+    event = db.get(Event, section.event_id)
+    is_owner = event and event.owner_id == current_user.id
+    is_curator = section.curator_id == current_user.id
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление секции")
+
+    report_ids = list(db.execute(select(Report.id).where(Report.section_id == section_id)).scalars().all())
+    if report_ids:
+        from models import ReportComment, ReportFeedback, UserReportSchedule
+        db.execute(sa_delete(ReportComment).where(ReportComment.report_id.in_(report_ids)))
+        db.execute(sa_delete(ReportFeedback).where(ReportFeedback.report_id.in_(report_ids)))
+        db.execute(sa_delete(UserReportSchedule).where(UserReportSchedule.report_id.in_(report_ids)))
+        db.execute(sa_delete(Report).where(Report.section_id == section_id))
+
+    db.execute(sa_delete(SectionReport).where(SectionReport.section_id == section_id))
+    db.execute(sa_delete(EventMembership).where(EventMembership.section_id == section_id))
+    db.delete(section)
+    db.commit()
+    return None
+
+
+@sections_router.get("/{section_id}/reports", response_model=List[ReportOut])
+def get_section_reports(
+    section_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[ReportOut]:
+    """Список докладов секции с именами спикеров."""
+    section = db.get(Section, section_id)
+    if not section:
+        raise HTTPException(status_code=404, detail="Секция не найдена")
+    stmt = select(Report).where(Report.section_id == section_id).order_by(Report.start_time)
+    reports = list(db.execute(stmt).scalars().all())
+
+    # Резолвим имена спикеров одним запросом
+    speaker_ids = [r.speaker_id for r in reports if r.speaker_id]
+    speakers_map: dict = {}
+    if speaker_ids:
+        speakers = db.execute(select(User).where(User.id.in_(speaker_ids))).scalars().all()
+        speakers_map = {u.id: u.full_name for u in speakers}
+
+    result = []
+    for r in reports:
+        out = ReportOut.model_validate(r, from_attributes=True)
+        out.speaker_name = speakers_map.get(r.speaker_id) if r.speaker_id else None
+        result.append(out)
+    return result
+
+
+@reports_router.get("/my", response_model=List[ReportOut])
+def my_reports(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[ReportOut]:
+    """Доклады, где текущий пользователь — спикер."""
+    stmt = select(Report).where(Report.speaker_id == current_user.id)
+    reports = list(db.execute(stmt).scalars().all())
+    result = []
+    for r in reports:
+        out = ReportOut.model_validate(r, from_attributes=True)
+        out.speaker_name = current_user.full_name  # speaker == current_user
+        result.append(out)
+    return result
 
 
 @reports_router.post("/{report_id}/speaker", response_model=ReportOut)
@@ -321,8 +726,17 @@ def assign_speaker(
     event = db.get(Event, section.event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие для доклада не найдено")
-    if event.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Только владелец мероприятия может назначать докладчиков")
+    is_owner = event.owner_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == event.id,
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None
+
+    if not is_owner and not is_curator:
+        raise HTTPException(status_code=403, detail="Только владелец или куратор мероприятия может назначать докладчиков")
 
     target_user = db.get(User, body.user_id)
     if not target_user:
@@ -332,40 +746,224 @@ def assign_speaker(
     report.speaker_confirmed = False
     db.add(report)
 
+    # Fix #7: проверяем существующую роль
     stmt = select(EventMembership).where(
         EventMembership.user_id == body.user_id,
         EventMembership.event_id == event.id,
     )
-    membership = db.execute(stmt).scalar_one_or_none()
-    if membership:
-        membership.context_role = "SPEAKER"
-        membership.report_id = report_id
-    else:
-        membership = EventMembership(
-            user_id=body.user_id,
-            event_id=event.id,
-            context_role="SPEAKER",
-            report_id=report_id,
-        )
-        db.add(membership)
+    existing = db.execute(stmt).scalars().first()
+    if existing:
+        if existing.context_role == "OWNER":
+            raise HTTPException(
+                status_code=409,
+                detail="Пользователь является владельцем мероприятия, назначение докладчиком невозможно",
+            )
+        if existing.context_role == "SPEAKER":
+            existing.report_id = report_id
+            db.commit()
+            db.refresh(report)
+            return ReportOut.model_validate(report, from_attributes=True)
+        # Для CURATOR/PARTICIPANT — создаём новую запись
+
+    membership = EventMembership(
+        user_id=body.user_id,
+        event_id=event.id,
+        context_role="SPEAKER",
+        report_id=report_id,
+    )
+    db.add(membership)
+
+    # Меняем global_role на SPEAKER если у пользователя роль PARTICIPANT
+    if target_user.global_role == "PARTICIPANT":
+        target_user.global_role = "SPEAKER"
+        db.add(target_user)
 
     db.commit()
     db.refresh(report)
-    return ReportOut.model_validate(report, from_attributes=True)
+
+    # B-8: автоматически добавляем спикера в чат мероприятия
+    _auto_add_to_event_chat(event.id, body.user_id, "Пользователь назначен спикером доклада", db)
+
+    out = ReportOut.model_validate(report, from_attributes=True)
+    out.speaker_name = target_user.full_name
+    return out
 
 
+# Fix #5: экранирование спецсимволов ILIKE; q="" возвращает всех пользователей (для dropdown)
 @users_router.get("/search", response_model=List[UserOut])
 def search_users(
-    q: str = Query(..., min_length=1),
+    q: str = Query(default=""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[UserOut]:
-    stmt = (
-        select(User)
-        .where(User.full_name.ilike(f"%{q}%"))
-        .order_by(User.full_name.asc())
-        .limit(20)
-    )
+    stmt = select(User).order_by(User.full_name.asc())
+    if q.strip():
+        safe_q = _escape_like(q.strip())
+        stmt = stmt.where(User.full_name.ilike(f"%{safe_q}%"))
+    stmt = stmt.limit(50)
     users = list(db.execute(stmt).scalars().all())
     return [UserOut.model_validate(u, from_attributes=True) for u in users]
 
+
+# =============================================
+# НОВЫЕ ЭНДПОИНТЫ (F1, F8, F13, F14)
+# =============================================
+
+
+@router.patch("/{event_id}", response_model=EventOut)
+def update_event(
+    event_id: str,
+    body: EventUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EventOut:
+    """Обновить мероприятие (только владелец)."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец может редактировать мероприятие")
+
+    for field in ("title", "description", "start_date", "end_date", "status"):
+        value = getattr(body, field, None)
+        if value is not None:
+            setattr(event, field, value)
+
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return EventOut.model_validate(event, from_attributes=True)
+
+
+@router.delete("/{event_id}", status_code=204)
+def delete_event(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Удалить мероприятие (только владелец). Каскадно удаляет все связанные данные."""
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    if event.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только владелец может удалить мероприятие")
+
+    # 1. Задачи мероприятия
+    db.execute(sa_delete(Task).where(Task.event_id == event_id))
+
+    # 2. Секции и их содержимое
+    section_ids_stmt = select(Section.id).where(Section.event_id == event_id)
+    section_ids = list(db.execute(section_ids_stmt).scalars().all())
+
+    if section_ids:
+        # 2a. Доклады секций
+        report_ids_stmt = select(Report.id).where(Report.section_id.in_(section_ids))
+        report_ids = list(db.execute(report_ids_stmt).scalars().all())
+
+        if report_ids:
+            db.execute(sa_delete(ReportComment).where(ReportComment.report_id.in_(report_ids)))
+            db.execute(sa_delete(ReportFeedback).where(ReportFeedback.report_id.in_(report_ids)))
+            db.execute(sa_delete(UserReportSchedule).where(UserReportSchedule.report_id.in_(report_ids)))
+            # Сбрасываем report_id в memberships
+            db.execute(
+                sa_delete(EventMembership).where(
+                    EventMembership.event_id == event_id
+                )
+            )
+            db.execute(sa_delete(Report).where(Report.section_id.in_(section_ids)))
+        else:
+            db.execute(sa_delete(EventMembership).where(EventMembership.event_id == event_id))
+
+        db.execute(sa_delete(SectionReport).where(SectionReport.section_id.in_(section_ids)))
+        db.execute(sa_delete(Section).where(Section.event_id == event_id))
+    else:
+        db.execute(sa_delete(EventMembership).where(EventMembership.event_id == event_id))
+
+    # 3. Чат-комнаты мероприятия
+    room_ids_stmt = select(ChatRoom.id).where(ChatRoom.event_id == event_id)
+    room_ids = list(db.execute(room_ids_stmt).scalars().all())
+    if room_ids:
+        db.execute(sa_delete(ChatMessage).where(ChatMessage.room_id.in_(room_ids)))
+        db.execute(sa_delete(ChatRoom).where(ChatRoom.event_id == event_id))
+
+    db.delete(event)
+    db.commit()
+    return None
+
+
+
+@reports_router.delete("/{report_id}", status_code=204)
+def delete_report(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Удалить доклад (владелец мероприятия или куратор секции)."""
+    from sqlalchemy import delete as sa_delete
+    report = db.get(Report, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Доклад не найден")
+
+    section = db.get(Section, report.section_id)
+    event = db.get(Event, section.event_id) if section else None
+
+    is_owner = event and event.owner_id == current_user.id
+    is_section_curator = section and section.curator_id == current_user.id
+    is_membership_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == (section.event_id if section else ""),
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None if section else False
+
+    if not is_owner and not is_section_curator and not is_membership_curator:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление доклада")
+
+    from models import ReportComment, ReportFeedback, UserReportSchedule
+    db.execute(sa_delete(ReportComment).where(ReportComment.report_id == report_id))
+    db.execute(sa_delete(ReportFeedback).where(ReportFeedback.report_id == report_id))
+    db.execute(sa_delete(UserReportSchedule).where(UserReportSchedule.report_id == report_id))
+    db.execute(sa_delete(EventMembership).where(EventMembership.report_id == report_id))
+    db.delete(report)
+    db.commit()
+    return None
+
+
+@reports_router.patch("/{report_id}", response_model=ReportOut)
+def update_report(
+    report_id: str,
+    body: ReportUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReportOut:
+    """Обновить доклад (владелец мероприятия или назначенный спикер)."""
+    report = db.get(Report, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Доклад не найден")
+
+    section = db.get(Section, report.section_id)
+    event = db.get(Event, section.event_id) if section else None
+
+    is_owner = event and event.owner_id == current_user.id
+    is_speaker = report.speaker_id == current_user.id
+    is_curator = db.execute(
+        select(EventMembership).where(
+            EventMembership.event_id == (event.id if event else ""),
+            EventMembership.user_id == current_user.id,
+            EventMembership.context_role == "CURATOR",
+        )
+    ).scalars().first() is not None if event else False
+
+    if not is_owner and not is_speaker and not is_curator:
+        raise HTTPException(status_code=403, detail="Нет прав на редактирование доклада")
+
+    for field in ("title", "description", "presentation_format", "start_time", "end_time", "speaker_confirmed"):
+        value = getattr(body, field, None)
+        if value is not None:
+            setattr(report, field, value)
+
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return ReportOut.model_validate(report, from_attributes=True)
