@@ -1189,267 +1189,243 @@ border: 3px solid #FFFFFF;
   .auth-back-btn { top: 16px; left: 16px; padding: 8px 16px; font-size: 13px; }
 }
 
-/* ── CALENDAR ── */
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+
+/* ════════════════════════════════════════════════════════════
+   DASHBOARD — Figma точный
+   ════════════════════════════════════════════════════════════ */
+
+:root {
+  --primary: #4A598A;
+  --primary-dark: #0D1B3E;
+  --border: #e2e8f0;
+  --bg-light: #f8fafc;
+  --bg-medium: #e8f0fe;
+  --text-muted: #94a3b8;
 }
 
-.cal-cell {
-  min-height: 80px;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.cal-cell.today {
-  border-color: var(--primary);
-  background: #eef6ff;
-}
-
-.cal-cell.other-month {
-  background: #f8fafc;
-  opacity: 0.5;
-}
-
-.cal-day-num {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.cal-cell.today .cal-day-num {
-  color: var(--primary);
-}
-
-.cal-dot {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 4px;
-  border-radius: 4px;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cal-nav-btn {
-  padding: 8px 16px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
+/* ── Страница дашборда ── */
+.db-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #E2F5FB;
   font-family: 'Nunito', sans-serif;
-  color: var(--primary-dark);
-  transition: background 0.15s;
 }
 
-.cal-nav-btn:hover {
-  background: #e2e8f0;
-}
-
-/* ════ CHAT ════ */
-.chat-wrapper {
-  display: flex;
-  gap: 0;
-  height: calc(100vh - 220px);
-  min-height: 500px;
-  border: 1.5px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.chat-rooms-list {
-  width: 260px;
-  flex-shrink: 0;
-  border-right: 1.5px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  background: #f8fafc;
-}
-
-.chat-rooms-header {
-  padding: 14px 16px;
-  font-weight: 800;
-  font-size: 13px;
-  color: var(--primary-dark);
-  border-bottom: 1.5px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.chat-room-item {
+/* ── Шапка профиля — Figma: #E2F5FB, h=440, аватар 320px ── */
+.db-profile-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  cursor: pointer;
-  border-bottom: 1px solid #f1f5f9;
-  transition: background 0.15s;
-}
-
-.chat-room-item:hover { background: #eef6ff; }
-.chat-room-item.active { background: #e8f0fe; }
-
-.chat-messages-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: white;
-  min-width: 0;
-}
-
-.chat-messages-header {
-  padding: 14px 20px;
-  font-weight: 800;
-  font-size: 15px;
-  color: var(--primary-dark);
-  border-bottom: 1.5px solid var(--border);
+  gap: 32px;
+  padding: 24px 40px;
+  background: #E2F5FB;
   flex-shrink: 0;
 }
 
-.chat-messages-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.chat-empty {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-  padding: 40px 20px;
-}
-
-.chat-msg {
-  max-width: 70%;
-  padding: 10px 14px;
-  border-radius: 16px;
-  font-size: 13px;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-.chat-msg.mine {
-  background: var(--primary);
+.db-profile-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: #44517B;
   color: white;
-  border-bottom-right-radius: 4px;
-}
-
-.chat-msg.theirs {
-  background: #f1f5f9;
-  color: var(--primary-dark);
-  border-bottom-left-radius: 4px;
-}
-
-/* ════ CALENDAR ════ */
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-
-.cal-cell {
-  min-height: 80px;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.cal-cell.today { border-color: var(--primary); background: #eef6ff; }
-.cal-cell.other-month { background: #f8fafc; opacity: 0.5; }
-
-.cal-day-num {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.cal-cell.today .cal-day-num { color: var(--primary); }
-
-.cal-dot {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 4px;
-  border-radius: 4px;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cal-nav-btn {
-  padding: 8px 16px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: 'Nunito', sans-serif;
-  color: var(--primary-dark);
-  transition: background 0.15s;
-}
-
-.cal-nav-btn:hover { background: #e2e8f0; }
-
-.chat-input-bar {
+  font-size: 40px;
+  font-weight: 900;
   display: flex;
-  gap: 10px;
-  padding: 12px 16px;
-  border-top: 1.5px solid var(--border);
-  background: white;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.chat-input-bar input {
+.db-profile-info {
   flex: 1;
-  padding: 10px 16px;
-  border: 1.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.db-profile-name {
+  font-size: 48px;
+  font-weight: 400;
+  color: #000;
+  line-height: 1;
+}
+
+.db-profile-role-badge {
+  display: inline-block;
+  padding: 6px 20px;
+  background: #44517B;
+  color: white;
+  border-radius: 40px;
+  font-size: 18px;
+  font-weight: 400;
+  width: fit-content;
+}
+
+.db-profile-contacts {
+  font-size: 16px;
+  color: #475569;
+}
+
+.db-profile-logout {
+  padding: 10px 28px;
+  background: transparent;
+  border: 1.5px solid #44517B;
+  color: #44517B;
   border-radius: 100px;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
   font-family: 'Nunito', sans-serif;
-  outline: none;
-  background: #f8fafc;
-  color: var(--primary-dark);
-  transition: border-color 0.15s;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.db-profile-logout:hover { background: #44517B; color: white; }
+
+/* ── Тело: main + сайдбар ── */
+.db-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
-.chat-input-bar input:focus {
-  border-color: var(--primary);
+/* ── Основной контент — Figma: Rectangle 48: white, border 8px #44517B, radius 30 ── */
+.db-main {
+  flex: 1;
+  padding: 20px 28px;
+  overflow-y: auto;
   background: white;
+  border: 8px solid #44517B;
+  border-radius: 30px;
+  margin: 0 0 16px 16px;
+  min-height: calc(100vh - 180px);
+  box-sizing: border-box;
 }
 
-.chat-input-bar button {
-  padding: 10px 22px;
-  background: var(--primary);
+/* ── Правый сайдбар — Figma: w=95, #BFD9F1 ── */
+.db-sidebar-right {
+  width: 95px;
+  background: #BFD9F1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 12px;
+  flex-shrink: 0;
+  min-height: 100%;
+}
+
+.db-icon-btn {
+  width: 60px;
+  height: 60px;
+  background: #44517B;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
   color: white;
+  line-height: 1;
+}
+.db-icon-btn:hover { background: #4A598A; transform: scale(1.05); }
+.db-icon-btn.active { background: #6B7AAA; box-shadow: inset 0 0 0 3px rgba(255,255,255,0.25); }
+.db-icon-btn-logout { background: rgba(220,38,38,0.15); color: #dc2626; }
+.db-icon-btn-logout:hover { background: #dc2626; color: white; }
+
+/* ── Вкладки ── */
+.db-nav-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.db-nav-btn {
+  padding: 9px 18px;
+  background: #f1f5f9;
+  color: #475569;
   border: none;
   border-radius: 100px;
-  font-weight: 800;
   font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
   font-family: 'Nunito', sans-serif;
-  white-space: nowrap;
   transition: background 0.15s;
-  flex-shrink: 0;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
+.db-nav-btn:hover { background: #e2e8f0; }
+.db-nav-btn.active { background: #44517B; color: white; }
+.db-nav-btn-create { background: #f0fdf4; color: #16a34a; }
+.db-nav-btn-create:hover { background: #dcfce7; }
 
-.chat-input-bar button:hover {
-  background: var(--primary-dark);
-}
+/* ── TopBar ── */
+.landing-topbar { width: 100%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.08); position: sticky; top: 0; z-index: 200; }
+.landing-nav-pill { max-width: 1600px; margin: 0 auto; padding: 0 32px; height: 64px; display: flex; align-items: center; gap: 32px; }
+.landing-nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; flex-shrink: 0; }
+.landing-nav-logo-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
+.landing-nav-logo-icon img { width: 100%; height: 100%; object-fit: contain; }
+.landing-nav-logo-text { font-weight: 900; font-size: 15px; line-height: 1.1; color: var(--primary-dark); }
+.landing-topbar .landing-nav-links { display: flex; gap: 24px; flex: 1; justify-content: center; }
+.landing-topbar .landing-nav-links a { font-size: 13px; font-weight: 700; color: #475569; cursor: pointer; text-decoration: none; transition: color 0.15s; white-space: nowrap; }
+.landing-topbar .landing-nav-links a:hover { color: var(--primary); }
+.nav-user-info { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.nav-user-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--primary); color: white; font-size: 14px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.nav-user-name { font-size: 13px; font-weight: 700; color: var(--primary-dark); white-space: nowrap; }
+.nav-logout-btn { padding: 6px 16px; background: transparent; border: 1.5px solid var(--primary); color: var(--primary); border-radius: 100px; font-weight: 700; font-size: 12px; cursor: pointer; font-family: 'Nunito', sans-serif; }
+.nav-logout-btn:hover { background: var(--primary); color: white; }
+
+/* ── Канбан — 3 колонки ── */
+.kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+.kanban-col { background: #f8fafc; border-radius: 14px; padding: 16px 12px; min-height: 200px; border: 1.5px solid var(--border); }
+.kanban-card { background: white; border-radius: 10px; padding: 14px; margin-bottom: 10px; border: 1.5px solid var(--border); box-shadow: 0 1px 6px rgba(74,89,138,0.07); }
+.kanban-card:hover { box-shadow: 0 4px 16px rgba(74,89,138,0.13); }
+
+/* ── Старый wrapper (совместимость) ── */
+.dashboard-wrapper { display: flex; flex: 1; min-height: 0; }
+.dashboard-sidebar { display: none; } /* скрываем старый левый sidebar */
+.dashboard-main-content { flex: 1; padding: 24px 28px; overflow-y: auto; }
+.sidebar-nav-list { display: none; }
+.nav-link { display: none; }
+
+/* ── Event detail ── */
+.event-detail-page { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+.comment-card { background: #f8fafc; border-radius: 10px; padding: 12px 16px; border: 1px solid var(--border); margin-bottom: 10px; }
+
+/* ── Чат ── */
+.chat-wrapper { display: flex; height: calc(100vh - 220px); min-height: 500px; border: 1.5px solid var(--border); border-radius: 16px; overflow: hidden; }
+.chat-rooms-list { width: 260px; flex-shrink: 0; border-right: 1.5px solid var(--border); display: flex; flex-direction: column; background: #f8fafc; }
+.chat-rooms-header { padding: 14px 16px; font-weight: 800; font-size: 13px; color: var(--primary-dark); border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.chat-room-item { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
+.chat-room-item:hover { background: #eef6ff; }
+.chat-room-item.active { background: #e8f0fe; }
+.chat-messages-area { flex: 1; display: flex; flex-direction: column; background: white; min-width: 0; }
+.chat-messages-header { padding: 14px 20px; font-weight: 800; font-size: 15px; color: var(--primary-dark); border-bottom: 1.5px solid var(--border); flex-shrink: 0; }
+.chat-messages-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+.chat-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 20px; }
+.chat-msg { max-width: 70%; padding: 10px 14px; border-radius: 16px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+.chat-msg.mine { background: var(--primary); color: white; border-bottom-right-radius: 4px; }
+.chat-msg.theirs { background: #f1f5f9; color: var(--primary-dark); border-bottom-left-radius: 4px; }
+.chat-input-bar { display: flex; gap: 10px; padding: 12px 16px; border-top: 1.5px solid var(--border); background: white; flex-shrink: 0; }
+.chat-input-bar input { flex: 1; padding: 10px 16px; border: 1.5px solid var(--border); border-radius: 100px; font-size: 13px; font-family: 'Nunito', sans-serif; outline: none; background: #f8fafc; color: var(--primary-dark); }
+.chat-input-bar input:focus { border-color: var(--primary); background: white; }
+.chat-input-bar button { padding: 10px 22px; background: var(--primary); color: white; border: none; border-radius: 100px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: 'Nunito', sans-serif; }
+.chat-input-bar button:hover { background: var(--primary-dark); }
+
+/* ── Календарь ── */
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-cell { min-height: 80px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 8px; background: white; box-sizing: border-box; overflow: hidden; }
+.cal-cell.today { border-color: var(--primary); background: #eef6ff; }
+.cal-cell.other-month { background: #f8fafc; opacity: 0.5; }
+.cal-day-num { font-size: 13px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; }
+.cal-cell.today .cal-day-num { color: var(--primary); }
+.cal-dot { font-size: 9px; font-weight: 700; padding: 2px 4px; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-nav-btn { padding: 8px 16px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Nunito', sans-serif; color: var(--primary-dark); }
+.cal-nav-btn:hover { background: #e2e8f0; }

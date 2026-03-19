@@ -1,4 +1,3 @@
-import "./Dashboard.css";
 import "./App.css";
 import "./ITClusterLanding.css"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,8 +16,7 @@ import type {
   TaskStatus,
   Event as EventData,
   GlobalRole,
-  ChatRoom,
-  ChatMessage,
+
   ChatSocketEvent,
 } from "./api/apiClient";
 
@@ -1946,8 +1944,19 @@ function OrganizerDashboard({
 
   return (
     <div className="db-page">
+      {/* ── ШАПКА ПРОФИЛЯ (Figma) ── */}
+      <div className="db-profile-header">
+        <div className="db-profile-avatar">{user.full_name[0]}</div>
+        <div className="db-profile-info">
+          <div className="db-profile-name">{user.full_name}</div>
+          <span className="db-profile-role-badge">ОРГАНИЗАТОР</span>
+          {user.organization && <div className="db-profile-contacts">{user.organization}</div>}
+          {demoMode && <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, marginLeft: 8 }}>DEMO</span>}
+        </div>
+        <button className="db-profile-logout" onClick={onLogout}>Выйти</button>
+      </div>
       {/* LAYOUT: main + правый сайдбар */}
-      <div className="db-wrapper">
+      <div className="db-body">
 
       {/* MAIN CONTENT */}
       <main className="db-main">
@@ -2191,13 +2200,12 @@ function OrganizerDashboard({
         )}
       </main>
 
-      {/* ПРАВЫЙ САЙДБАР */}
+      {/* ПРАВЫЙ САЙДБАР Figma: 95px #BFD9F1 */}
       <aside className="db-sidebar-right">
         <button className="db-icon-btn" onClick={() => navigate("/")} title="Главная">🏠</button>
         {navItems.map(i => (
-          <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`} onClick={() => setTab(i.id as any)} title={i.label}>
-            {i.icon}
-          </button>
+          <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`}
+            onClick={() => setTab(i.id as any)} title={i.label}>{i.icon}</button>
         ))}
         <div style={{ flex: 1 }} />
         <button className="db-icon-btn db-icon-btn-logout" onClick={onLogout} title="Выйти">🚪</button>
@@ -2793,7 +2801,20 @@ function ParticipantDashboard({
 
   return (
     <div className="db-page">
-      <div className="db-wrapper">
+      {/* ── ШАПКА ПРОФИЛЯ (Figma) ── */}
+      <div className="db-profile-header">
+        <div className="db-profile-avatar" style={{ background: roleColor }}>{user.full_name[0]}</div>
+        <div className="db-profile-info">
+          <div className="db-profile-name">{user.full_name}</div>
+          <span className="db-profile-role-badge" style={{ background: roleBg, color: roleColor }}>{roleLabel}</span>
+          {user.organization && <div className="db-profile-contacts">{user.organization}</div>}
+          {user.email && <div className="db-profile-contacts" style={{ fontSize: 13 }}>{user.email}</div>}
+          {demoMode && <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, marginLeft: 8 }}>DEMO</span>}
+        </div>
+        <button className="db-profile-logout" onClick={onLogout}>Выйти</button>
+      </div>
+      {/* LAYOUT: main + правый сайдбар */}
+      <div className="db-body">
 
       <main className="db-main">
         {/* Горизонтальные вкладки */}
@@ -3267,7 +3288,15 @@ function ParticipantDashboard({
             )}
 
             {tab === "schedule" && (
-              <ScheduleTab demoMode={demoMode} regs={regs} events={events} />
+              <div>
+                {/* Календарь вверху */}
+                <h1 style={{ fontWeight: 900, fontSize: 22, color: "var(--primary-dark)", marginBottom: 16 }}>📅 Календарь</h1>
+                <CalendarView events={events} tasks={tasks} />
+                <div style={{ margin: "32px 0 16px", borderTop: "1.5px solid var(--border)", paddingTop: 24 }}>
+                  <h2 style={{ fontWeight: 900, fontSize: 18, color: "var(--primary-dark)", marginBottom: 16 }}>📋 Моё расписание</h2>
+                </div>
+                <ScheduleTab demoMode={demoMode} regs={regs} events={events} userId={user.id} />
+              </div>
             )}
 
                         {/* ═══ ВОПРОСЫ УЧАСТНИКОВ (только куратор) ═══ */}
@@ -3400,10 +3429,10 @@ function ParticipantDashboard({
 
       {/* ПРАВЫЙ САЙДБАР */}
       <aside className="db-sidebar-right">
-        <button className="db-icon-btn" onClick={() => navigate("/")} title="Главная">🏠</button>
+        <button className="db-icon-btn" onClick={() => navigate("/")} title="На главную">🏠</button>
         {navItems.map(i => (
-          <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`} onClick={() => setTab(i.id as any)} title={i.label}>
-            {i.icon}
+          <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`}
+            onClick={() => setTab(i.id as any)} title={i.label}>{i.icon}
           </button>
         ))}
         <div style={{ flex: 1 }} />
@@ -3803,11 +3832,12 @@ function ProgramTab({
 // SCHEDULE TAB — моё расписание (зарегистрированные + добавленные доклады)
 // ═══════════════════════════════════════════════════════════════
 function ScheduleTab({
-  demoMode, regs, events,
+  demoMode, regs, events, userId,
 }: {
   demoMode: boolean;
   regs: Set<string>;
   events: EventData[];
+  userId?: string;
 }) {
   const [reportItems, setReportItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
