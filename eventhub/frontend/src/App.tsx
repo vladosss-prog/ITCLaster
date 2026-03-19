@@ -862,9 +862,9 @@ function LandingPage({ user, onLogout }: { user: User | null; onLogout: () => vo
             ))}
           </div>
 
-          <button className="landing-show-more" onClick={() => setShowAllEvents(!showAllEvents)}>
-            {showAllEvents ? "Скрыть" : "Показать еще"}
-          </button>
+          <button className="landing-show-more" onClick={() => navigate("/events")}>
+  Показать еще
+</button>
         </div>
       </section>
 
@@ -3429,14 +3429,14 @@ function ParticipantDashboard({
 
       {/* ПРАВЫЙ САЙДБАР */}
       <aside className="db-sidebar-right">
-        <button className="db-icon-btn" onClick={() => navigate("/")} title="На главную">🏠</button>
+        <button className="db-icon-btn" onClick={() => navigate("/")} title="На главную"><img src="/Home.png" alt="" /></button>
         {navItems.map(i => (
           <button key={i.id} className={`db-icon-btn${tab === i.id ? " active" : ""}`}
             onClick={() => setTab(i.id as any)} title={i.label}>{i.icon}
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button className="db-icon-btn db-icon-btn-logout" onClick={onLogout} title="Выйти">🚪</button>
+        <button className="db-icon-btn db-icon-btn-logout" onClick={onLogout} title="Выйти"><img src="/Group.png" alt="" /></button>
       </aside>
 
       </div>
