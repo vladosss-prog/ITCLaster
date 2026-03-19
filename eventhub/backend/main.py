@@ -36,3 +36,7 @@ def root():
 def health():
     return {"status": "healthy"}
 
+allow_origins=[
+    "http://localhost:5173",
+    "https://itclaster-production-b3d6.up.railway.app"
+]
