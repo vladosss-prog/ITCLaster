@@ -975,56 +975,26 @@ function AuthPage({ onLogin, onRegister, loading, error }: {
         ← На главную
       </button>
 
-      {/* Карточка */}
-      <div className={`auth-wide-card${isRegister ? " register-mode" : ""}`}>
-
-        {/* Левая тёмная панель с роботом */}
-        <div className="auth-robot-panel">
-          <div className="auth-robot-inner">
-            {/* Замените на: <img src="/robot-hand.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0,borderRadius:28}} /> */}
-            <span style={{ fontSize: 80, position: "relative", zIndex: 1 }}>🤖</span>
-            <div className="auth-robot-shine" />
-          </div>
-        </div>
-
-        {/* Правая форма */}
-        <div className="auth-form-panel">
-          <h1 className="auth-heading">
-            {isRegister ? "Создать аккаунт" : "Добро пожаловать!"}
-          </h1>
-
-          {error && (
-            <div className="auth-error-block">{error}</div>
-          )}
-
-          {/* Demo кнопки — только для входа */}
-          {!isRegister && (
-            <div className="auth-demo-strip">
-              <div className="auth-demo-label">⚡ Быстрый demo вход</div>
-              <div className="auth-demo-row">
-                {[
-                  { email: "org@it.ru",     pass: "org",     label: "👔 Организатор", bg: "var(--primary)" },
-                  { email: "curator@it.ru", pass: "curator", label: "📋 Куратор",      bg: "#6b7280" },
-                  { email: "speaker@it.ru", pass: "speaker", label: "🎤 Спикер",       bg: "#d97706" },
-                  { email: "user@it.ru",    pass: "user",    label: "🙋 Участник",     bg: "#16a34a" },
-                ].map((d) => (
-                  <button
-                    key={d.email}
-                    type="button"
-                    className="auth-demo-btn"
-                    style={{ background: d.bg }}
-                    onClick={() => { setEmail(d.email); setPassword(d.pass); }}
-                  >
-                    {d.label}
-                  </button>
-                ))}
-              </div>
+      {/* РЕГИСТРАЦИЯ — широкая карточка с роботом слева */}
+      {isRegister ? (
+        <div className="auth-wide-card">
+          {/* Левая тёмная панель с роботом */}
+          <div className="auth-robot-panel">
+            <div className="auth-robot-inner">
+              {/* Замените на реальное фото: */}
+              {/* <img src="/robot-hand.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0,borderRadius:28}} /> */}
+              <img src="/robot_hand-r.png" alt="robo hand" />
+              <div className="auth-robot-shine" />
             </div>
-          )}
+          </div>
 
-          <form onSubmit={handleSubmit}>
-            {/* Имя + Фамилия — только регистрация */}
-            {isRegister && (
+          {/* Правая форма регистрации */}
+          <div className="auth-form-panel">
+            <h1 className="auth-heading">Создать аккаунт</h1>
+
+            {error && <div className="auth-error-block">{error}</div>}
+
+            <form onSubmit={handleSubmit}>
               <div className="auth-field-row">
                 <div className="auth-field">
                   <label className="auth-label">Имя</label>
@@ -1048,9 +1018,78 @@ function AuthPage({ onLogin, onRegister, loading, error }: {
                   />
                 </div>
               </div>
-            )}
 
-            {/* Почта */}
+              <div className="auth-field">
+                <label className="auth-label">Почта</label>
+                <input
+                  type="email"
+                  className="auth-input-new"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Введите адрес почты"
+                  required
+                />
+              </div>
+
+              <div className="auth-field">
+                <label className="auth-label">Пароль</label>
+                <input
+                  type="password"
+                  className="auth-input-new"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Введите пароль"
+                  required
+                />
+              </div>
+
+              <div className="auth-agree-row">
+                <input type="checkbox" className="auth-checkbox" required />
+                <span className="auth-agree-text">Я соглашаюсь с условиями</span>
+              </div>
+
+              <button type="submit" className="auth-submit-btn" disabled={loading}>
+                {loading ? "Регистрация..." : "Зарегистрироваться"}
+              </button>
+            </form>
+
+            <div className="auth-switch-row">
+              <span onClick={switchMode}>Уже есть аккаунт? Войти</span>
+            </div>
+          </div>
+        </div>
+
+      ) : (
+        /* ВХОД — узкая карточка по центру, без робота */
+        <div className="auth-narrow-card">
+          <h1 className="auth-heading">Добро пожаловать!</h1>
+
+          {error && <div className="auth-error-block">{error}</div>}
+
+          {/* Demo кнопки */}
+          <div className="auth-demo-strip">
+            <div className="auth-demo-label">⚡ Быстрый demo вход</div>
+            <div className="auth-demo-row">
+              {[
+                { email: "org@it.ru",     pass: "org",     label: "👔 Организатор", bg: "#4A598A" },
+                { email: "curator@it.ru", pass: "curator", label: "📋 Куратор",      bg: "#6b7280" },
+                { email: "speaker@it.ru", pass: "speaker", label: "🎤 Спикер",       bg: "#d97706" },
+                { email: "user@it.ru",    pass: "user",    label: "🙋 Участник",     bg: "#16a34a" },
+              ].map((d) => (
+                <button
+                  key={d.email}
+                  type="button"
+                  className="auth-demo-btn"
+                  style={{ background: d.bg }}
+                  onClick={() => { setEmail(d.email); setPassword(d.pass); }}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit}>
             <div className="auth-field">
               <label className="auth-label">Почта</label>
               <input
@@ -1063,7 +1102,6 @@ function AuthPage({ onLogin, onRegister, loading, error }: {
               />
             </div>
 
-            {/* Пароль */}
             <div className="auth-field">
               <label className="auth-label">Пароль</label>
               <input
@@ -1076,41 +1114,24 @@ function AuthPage({ onLogin, onRegister, loading, error }: {
               />
             </div>
 
-            {/* Запомнить / Забыли пароль — только вход */}
-            {!isRegister && (
-              <div className="auth-remember-row">
-                <label className="auth-remember-label">
-                  <input type="checkbox" className="auth-checkbox" />
-                  Запомнить меня
-                </label>
-                <span className="auth-forgot">Забыли пароль?</span>
-              </div>
-            )}
-
-            {/* Согласие — только регистрация */}
-            {isRegister && (
-              <div className="auth-agree-row">
-                <input type="checkbox" className="auth-checkbox" required />
-                <span className="auth-agree-text">Я соглашаюсь с условиями</span>
-              </div>
-            )}
+            <div className="auth-remember-row">
+              <label className="auth-remember-label">
+                <input type="checkbox" className="auth-checkbox" />
+                Запомнить меня
+              </label>
+              <span className="auth-forgot">Забыли пароль?</span>
+            </div>
 
             <button type="submit" className="auth-submit-btn" disabled={loading}>
-              {loading
-                ? (isRegister ? "Регистрация..." : "Вход...")
-                : (isRegister ? "Зарегистрироваться" : "Войти")}
+              {loading ? "Вход..." : "Войти"}
             </button>
           </form>
 
           <div className="auth-switch-row">
-            <span onClick={switchMode}>
-              {isRegister
-                ? "Уже есть аккаунт? Войти"
-                : "Нет аккаунта? Зарегистрироваться"}
-            </span>
+            <span onClick={switchMode}>Нет аккаунта? Зарегистрироваться</span>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
